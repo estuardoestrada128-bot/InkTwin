@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 
 import fitz
 
+from .inspector import build_rigid_groups
 from .schema import load_inkscene, resolve_scene_state
 
 
@@ -77,9 +78,14 @@ def render_page_svg(page_idx: int, resolved: dict, transparent: bool = False) ->
         parts.extend(_paper_svg_background(paper, w_mm, h_mm))
 
     px_to_mm = 25.4 / 96.0
-    for g in resolved.get("glyphs", []):
-        if g.get("hidden") or int(g.get("page", 0)) != page_idx:
-            continue
+    rigid_groups = build_rigid_groups(resolved.get("glyphs", []))
+    page_glyphs = [
+        g for g in resolved.get("glyphs", [])
+        if not g.get("hidden") and int(g.get("page", 0)) == page_idx
+    ]
+    # Emit table_rule background borders before regular glyphs so table cells are easily clickable
+    page_glyphs.sort(key=lambda g: 0 if g.get("ch") == "table_rule" else 1)
+    for g in page_glyphs:
         vb = g.get("vb") or [0.0, 0.0, 100.0, 100.0]
         vw = max(1e-3, float(vb[2]))
         vh = max(1e-3, float(vb[3]))
@@ -103,7 +109,9 @@ def render_page_svg(page_idx: int, resolved: dict, transparent: bool = False) ->
         if abs(vx0) > 1e-4 or abs(vy0) > 1e-4:
             tf += f" translate({-vx0:.3f},{-vy0:.3f})"
 
-        parts.append(f'<g class="sc-glyph" id="{gid}" data-line="{line_id}" data-ch="{ch_attr}" transform="{tf}">')
+        grp = rigid_groups.get(str(g.get("id", "")), "")
+        grp_attr = f' data-group="{html.escape(grp, quote=True)}"' if grp else ""
+        parts.append(f'<g class="sc-glyph" id="{gid}" data-line="{line_id}" data-ch="{ch_attr}"{grp_attr} transform="{tf}">')
         for p in g.get("paths", []):
             d = p.get("d", "")
             if not d:

@@ -7,7 +7,7 @@ import random
 import re
 from typing import Dict, List, Optional
 
-from .inspector import inspect_scene
+from .inspector import build_rigid_groups, inspect_scene
 from .schema import resolve_scene_state
 
 
@@ -157,6 +157,13 @@ def apply_drift(
     new_ops: List[dict] = []
     q_start_re = re.compile(r"^(?:\d+[\.、\)]|第\d+题|\(\d+\))")
 
+    by_id = {g["id"]: g for g in resolved["glyphs"] if not g.get("hidden")}
+    rigid_groups = build_rigid_groups(resolved["glyphs"])
+    group_members: Dict[str, List[str]] = {}
+    for gid, grp in rigid_groups.items():
+        group_members.setdefault(grp, []).append(gid)
+    drifted_groups = set()
+
     for p in range(resolved["pages_detected"]):
         p_lines = [ln for ln in resolved["lines"] if ln["page"] == p and not ln.get("grid")]
         creep = 0.0
@@ -169,16 +176,49 @@ def apply_drift(
 
             wave = math.sin(idx * 0.65 + rng.uniform(0, 0.5)) * 0.65 * amt
             noise = (rng.random() - 0.5) * 0.9 * amt
-            dx = (wave + noise) if mode == "random" else (creep + wave * 0.7 + noise * 0.6)
+            base_dx = (wave + noise) if mode == "random" else (creep + wave * 0.7 + noise * 0.6)
 
-            # Clamp so line stays inside margin line and right printable bound
-            if ln["left_mm"] + dx < min_left:
-                dx = min_left - ln["left_mm"]
-            if ln["right_mm"] + dx > max_right:
-                dx = max_right - ln["right_mm"]
+            line_groups: List[str] = []
+            seen_lg = set()
+            free_gids: List[str] = []
+            for gid in ln["glyph_ids"]:
+                if gid not in by_id:
+                    continue
+                grp = rigid_groups.get(gid)
+                if grp:
+                    if grp not in seen_lg:
+                        seen_lg.add(grp)
+                        line_groups.append(grp)
+                else:
+                    free_gids.append(gid)
 
-            if abs(dx) >= 0.15 and ln["glyph_ids"]:
-                new_ops.append({"op": "move", "ids": ln["glyph_ids"], "dx": round(dx, 3), "dy": 0.0, "batch": batch})
+            for grp in line_groups:
+                if grp in drifted_groups:
+                    continue
+                drifted_groups.add(grp)
+                mids = [gid for gid in group_members.get(grp, []) if gid in by_id]
+                if not mids:
+                    continue
+                g_left = min(by_id[gid]["x"] for gid in mids)
+                g_right = max(by_id[gid]["x"] + by_id[gid]["w"] for gid in mids)
+                gdx = base_dx
+                if g_left + gdx < min_left:
+                    gdx = min_left - g_left
+                if g_right + gdx > max_right:
+                    gdx = max_right - g_right
+                if abs(gdx) >= 0.15:
+                    new_ops.append({"op": "move", "ids": mids, "dx": round(gdx, 3), "dy": 0.0, "batch": batch})
+
+            if free_gids:
+                f_left = min(by_id[gid]["x"] for gid in free_gids)
+                f_right = max(by_id[gid]["x"] + by_id[gid]["w"] for gid in free_gids)
+                fdx = base_dx
+                if f_left + fdx < min_left:
+                    fdx = min_left - f_left
+                if f_right + fdx > max_right:
+                    fdx = max_right - f_right
+                if abs(fdx) >= 0.15:
+                    new_ops.append({"op": "move", "ids": free_gids, "dx": round(fdx, 3), "dy": 0.0, "batch": batch})
 
     if new_ops:
         new_ops.append({"op": "note", "text": f"drift ({mode}, amount={amt})", "batch": batch})

@@ -129,6 +129,16 @@
     background: rgba(226, 76, 75, 0.18); color: #ff8a89; margin-right: 4px;
   }
   .kbd { background: #14161b; border: 1px solid #3c4352; border-radius: 4px; padding: 0 5px; font-size: 11px; }
+  #float-bar {
+    position: fixed; z-index: 45; display: none; align-items: center; gap: 5px; flex-wrap: nowrap;
+    background: rgba(24, 27, 34, 0.96); backdrop-filter: blur(8px);
+    border: 1px solid #454d60; border-radius: 10px; padding: 5px 8px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.48); white-space: nowrap;
+  }
+  #float-bar .sep { height: 16px; }
+  #fb-count { font-size: 11.5px; color: #9fc0ff; font-weight: 600; padding: 0 4px; }
+  #btn-back { background: #262c38; border-color: #48546b; color: #dbe6ff; font-weight: 600; }
+  #btn-back:hover:not(:disabled) { background: #333c4e; border-color: var(--accent); }
   #toast {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
     background: #101216; border: 1px solid var(--accent); color: #fff;
@@ -138,35 +148,22 @@
 </head>
 <body>
 <header>
+  <button id="btn-back" style="display:none" title="返回 InkTwin Studio 预览页">← 返回 Studio</button>
   <span class="brand">InkTwin 逐字编辑器</span>
   <button id="btn-prev" title="上一页">&lt;</button>
   <span id="page-label">第 1 / 1 页</span>
   <button id="btn-next" title="下一页">&gt;</button>
   <span class="sep"></span>
   <button id="btn-zout" title="缩小画布">−</button>
-  <span id="zoom-label" style="min-width:44px;text-align:center;cursor:pointer" title="点击重置为 100%">100%</span>
+  <span id="zoom-label" style="min-width:44px;text-align:center;cursor:pointer" title="点击重置为 100% (快捷键 0)">100%</span>
   <button id="btn-zin" title="放大画布">+</button>
-  <button id="btn-zfit" title="适应窗口宽度">适应</button>
-  <span class="sep"></span>
-  <button id="btn-reroll" title="切换到该字符的另一个手写变体 (R)">换写法 (R)</button>
-  <button id="btn-scale-up" title="放大选中字 (+)">字放大</button>
-  <button id="btn-scale-dn" title="缩小选中字 (-)">字缩小</button>
-  <button id="btn-rot-l" title="逆时针微旋 ([)">左旋</button>
-  <button id="btn-rot-r" title="顺时针微旋 (])">右旋</button>
-  <button id="btn-hide" title="隐藏选中字 (Delete)">隐藏</button>
-  <span class="sep"></span>
-  <span>笔色:</span>
-  <button class="swatch" data-color="black" style="background:#111318" title="黑笔"></button>
-  <button class="swatch" data-color="blue" style="background:#19378a" title="蓝笔"></button>
-  <button class="swatch" data-color="darkblue" style="background:#13244b" title="深蓝"></button>
-  <button class="swatch" data-color="red" style="background:#c6332f" title="红笔批注"></button>
+  <button id="btn-zfit" title="适应窗口宽度 (快捷键 F)">适应</button>
   <span class="sep"></span>
   <button id="btn-tighten" title="自动收拢过大字距">收拢空隙</button>
   <button id="btn-drift" title="为过于整齐的左边缘增加自然起伏">自然右漂</button>
-  <button id="btn-inspect">异常红框</button>
   <button id="btn-undo" title="Ctrl+Z">撤销</button>
   <button id="btn-reset">还原</button>
-  <span class="sep"></span>
+  <span style="flex:1"></span>
   <button class="primary" id="btn-export-pdf">导出 PDF</button>
   <button id="btn-export-png">导出透明 PNG</button>
 </header>
@@ -187,22 +184,45 @@
     <div class="kv"><span>当前选中</span><strong id="st-sel">0</strong></div>
     <div class="kv"><span>拖动偏移</span><strong id="st-drag">-</strong></div>
 
-    <h3>操作说明</h3>
+    <h3>快捷键与操作</h3>
     <div style="color:var(--muted)">
-      <span class="kbd">Ctrl + 滚轮</span>：单独缩放纸面画布<br/>
-      <span class="kbd">中键</span> 或 <span class="kbd">空格 + 左键</span>拖动：平移画布<br/>
-      单击 / 框选：选中单字或多个字<br/>
-      按住拖动 / 方向键：实时微调位置<br/>
-      双击或按 <span class="kbd">L</span>：选中整行<br/>
-      <span class="kbd">R</span>：切换该字另一手写变体<br/>
-      <span class="kbd">+</span>/<span class="kbd">-</span>：缩放 · <span class="kbd">[</span>/<span class="kbd">]</span>：微旋<br/>
-      <span class="kbd">Del</span>：隐藏选中字 · <span class="kbd">Ctrl+Z</span>：撤销
+      <span class="kbd">Ctrl+滚轮</span>：缩放画布 · <span class="kbd">0</span>/<span class="kbd">F</span>：100%/适应<br/>
+      <span class="kbd">右键</span> / <span class="kbd">中键</span> / <span class="kbd">空格+左键</span> 拖动画布<br/>
+      单击 / 框选：选中单字；<span class="kbd">Ctrl+A</span> 全选本页<br/>
+      <span class="kbd">L</span> 选整行 · <span class="kbd">G</span> 选整表/草图 · <span class="kbd">Esc</span> 取消<br/>
+      拖动 / <span class="kbd">方向键</span>：微调位置（<span class="kbd">Shift</span> 步进 1mm）<br/>
+      <span class="kbd">R</span> 换写法 · <span class="kbd">+</span>/<span class="kbd">-</span> 缩放 · <span class="kbd">[</span>/<span class="kbd">]</span> 微旋<br/>
+      <span class="kbd">Del</span> 隐藏 · <span class="kbd">Ctrl+Z</span> 撤销
     </div>
 
-    <h3>质检异常列表</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px">
+      <h3 style="margin:0">质检异常 <span id="anom-cnt"></span></h3>
+      <label id="anom-toggle-wrap" style="display:none;align-items:center;gap:4px;cursor:pointer;color:var(--muted);font-size:11.5px">
+        <input id="chk-inspect" type="checkbox" checked /> 红框标注
+      </label>
+    </div>
     <div id="anom-list"></div>
   </aside>
 </main>
+<div id="float-bar">
+  <span id="fb-count">1 字</span>
+  <span class="sep"></span>
+  <button id="btn-reroll" title="切换到该字符的另一个手写变体 (R)">换写法 (R)</button>
+  <button id="btn-sel-line" title="扩展选中整行 (L)">整行</button>
+  <button id="btn-sel-group" style="display:none" title="选中整个表格或草图 (G)">整表</button>
+  <span class="sep"></span>
+  <button id="btn-scale-up" title="放大选中字 (+)">放大</button>
+  <button id="btn-scale-dn" title="缩小选中字 (-)">缩小</button>
+  <button id="btn-rot-l" title="逆时针微旋 ([)">↺</button>
+  <button id="btn-rot-r" title="顺时针微旋 (])">↻</button>
+  <span class="sep"></span>
+  <button class="swatch" data-color="black" style="background:#111318" title="黑笔"></button>
+  <button class="swatch" data-color="blue" style="background:#19378a" title="蓝笔"></button>
+  <button class="swatch" data-color="darkblue" style="background:#13244b" title="深蓝"></button>
+  <button class="swatch" data-color="red" style="background:#c6332f" title="红笔批注"></button>
+  <span class="sep"></span>
+  <button id="btn-hide" title="隐藏选中字 (Delete)">隐藏</button>
+</div>
 <div id="marquee"></div>
 <div id="toast"></div>
 
@@ -226,6 +246,23 @@
   const overlayLayer = document.getElementById('overlay-layer');
   const paperFrame = document.getElementById('paper-frame');
   const marqueeEl = document.getElementById('marquee');
+  const floatBar = document.getElementById('float-bar');
+  const returnUrl = new URLSearchParams(location.search).get('return') || '';
+  const hasOpener = (() => { try { return !!(window.opener && !window.opener.closed); } catch (_) { return false; } })();
+
+  const btnBack = document.getElementById('btn-back');
+  if (returnUrl || hasOpener) {
+    btnBack.style.display = 'inline-block';
+    btnBack.onclick = () => {
+      if (hasOpener) {
+        try { window.opener.focus(); } catch (_) {}
+        window.close();
+        setTimeout(() => { if (!window.closed && returnUrl) location.href = returnUrl; }, 160);
+      } else if (returnUrl) {
+        location.href = returnUrl;
+      }
+    };
+  }
 
   function toast(msg) {
     const el = document.getElementById('toast');
@@ -265,6 +302,7 @@
       stageWrap.scrollTop += (nr.top + relY * nr.height) - anchorClientY;
     }
     renderAnomalies();
+    positionFloatBar();
   }
 
   function injectHitboxes() {
@@ -290,34 +328,85 @@
     });
   }
 
+  function positionFloatBar() {
+    if (!selected.size || dragMode || panState) {
+      floatBar.style.display = 'none';
+      return;
+    }
+    let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
+    let hasGroup = false;
+    selected.forEach(gid => {
+      const el = document.getElementById(gid);
+      if (!el) return;
+      if (el.getAttribute('data-group')) hasGroup = true;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 || r.height > 0) {
+        if (r.left < minL) minL = r.left;
+        if (r.top < minT) minT = r.top;
+        if (r.right > maxR) maxR = r.right;
+        if (r.bottom > maxB) maxB = r.bottom;
+      }
+    });
+    if (!isFinite(minL)) {
+      floatBar.style.display = 'none';
+      return;
+    }
+    document.getElementById('fb-count').textContent = `${selected.size} 字`;
+    document.getElementById('btn-sel-group').style.display = hasGroup ? '' : 'none';
+    floatBar.style.display = 'flex';
+    const sr = stageWrap.getBoundingClientRect();
+    const bw = floatBar.offsetWidth || 440;
+    const bh = floatBar.offsetHeight || 34;
+    let left = (minL + maxR) * 0.5 - bw * 0.5;
+    left = Math.max(sr.left + 8, Math.min(sr.right - bw - 8, left));
+    let top = minT - bh - 10;
+    if (top < sr.top + 8) top = maxB + 10;
+    top = Math.max(sr.top + 8, Math.min(sr.bottom - bh - 8, top));
+    floatBar.style.left = Math.round(left) + 'px';
+    floatBar.style.top = Math.round(top) + 'px';
+  }
+
   function updateSelectionUI() {
     document.querySelectorAll('.sc-glyph').forEach(g => {
       g.classList.toggle('selected', selected.has(g.id));
     });
     document.getElementById('st-sel').textContent = String(selected.size);
     const noSel = selected.size === 0;
-    ['btn-reroll', 'btn-scale-up', 'btn-scale-dn', 'btn-rot-l', 'btn-rot-r', 'btn-hide'].forEach(id => {
+    ['btn-reroll', 'btn-sel-line', 'btn-sel-group', 'btn-scale-up', 'btn-scale-dn', 'btn-rot-l', 'btn-rot-r', 'btn-hide'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = noSel;
     });
     document.querySelectorAll('.swatch').forEach(s => { s.disabled = noSel; });
+    positionFloatBar();
   }
+
+  const ANOM_ZH = {
+    gap: '空隙过宽',
+    overlap: '墨迹重叠',
+    outside_margin: '超出页边',
+    prompt_collision: '压到原题',
+  };
 
   function renderAnomalies() {
     const list = document.getElementById('anom-list');
+    const toggleWrap = document.getElementById('anom-toggle-wrap');
+    const cntSpan = document.getElementById('anom-cnt');
     list.innerHTML = '';
     overlayLayer.setAttribute('viewBox', `0 0 ${pageWidthMm} ${pageHeightMm}`);
     overlayLayer.innerHTML = '';
 
     const anoms = (inspectData && inspectData.anomalies) ? inspectData.anomalies : [];
+    cntSpan.textContent = anoms.length ? `(${anoms.length})` : '';
+    toggleWrap.style.display = anoms.length ? 'inline-flex' : 'none';
     if (!anoms.length) {
-      list.innerHTML = '<div style="color:#6ce59f">未检出异常。</div>';
+      list.innerHTML = '<div style="color:#6ce59f">✓ 版面正常，无异常</div>';
       return;
     }
     anoms.slice(0, 40).forEach(a => {
       const div = document.createElement('div');
       div.className = 'anom-item';
-      div.innerHTML = `<span class="badge">${a.kind}</span> <b>${a.chars || ''}</b> <span style="color:#98a2b3">(${a.line || ''})</span>`;
+      const kLabel = ANOM_ZH[a.kind] || a.kind;
+      div.innerHTML = `<span class="badge">${kLabel}</span> <b>${a.chars || ''}</b> <span style="color:#98a2b3">P${(a.page || 0) + 1}</span>`;
       div.onclick = async () => {
         if (typeof a.page === 'number' && a.page !== currentPage) {
           currentPage = a.page;
@@ -325,6 +414,12 @@
         }
         selected = new Set(a.ids || []);
         updateSelectionUI();
+        const firstId = (a.ids || [])[0];
+        const firstEl = firstId && document.getElementById(firstId);
+        if (firstEl) {
+          firstEl.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+          setTimeout(positionFloatBar, 260);
+        }
       };
       list.appendChild(div);
 
@@ -416,30 +511,47 @@
     }
   }, { passive: false });
 
-  // Canvas drag-pan (Middle-mouse or Space + Left-drag)
+  // Canvas drag-pan (Right-mouse, Middle-mouse, or Space + Left-drag)
   let spaceHeld = false;
   let panState = null;
+  let didRightPan = false;
+  let dragMode = null;
 
   stageWrap.addEventListener('mousedown', (e) => {
-    if (e.button === 1 || (e.button === 0 && spaceHeld)) {
+    if (e.button === 1 || e.button === 2 || (e.button === 0 && spaceHeld)) {
       e.preventDefault();
       e.stopPropagation();
-      panState = { sx: e.clientX, sy: e.clientY, sl: stageWrap.scrollLeft, st: stageWrap.scrollTop };
+      if (e.button === 2) didRightPan = false;
+      panState = { btn: e.button, sx: e.clientX, sy: e.clientY, sl: stageWrap.scrollLeft, st: stageWrap.scrollTop };
       stageWrap.classList.add('panning');
+      positionFloatBar();
     }
   }, true);
 
+  stageWrap.addEventListener('contextmenu', (e) => {
+    if (didRightPan || panState) {
+      e.preventDefault();
+      didRightPan = false;
+    }
+  });
+
   window.addEventListener('mousemove', (e) => {
     if (!panState) return;
-    stageWrap.scrollLeft = panState.sl - (e.clientX - panState.sx);
-    stageWrap.scrollTop = panState.st - (e.clientY - panState.sy);
+    const dx = e.clientX - panState.sx, dy = e.clientY - panState.sy;
+    if (panState.btn === 2 && Math.hypot(dx, dy) > 3) didRightPan = true;
+    stageWrap.scrollLeft = panState.sl - dx;
+    stageWrap.scrollTop = panState.st - dy;
   });
 
   window.addEventListener('mouseup', () => {
     if (!panState) return;
     panState = null;
     stageWrap.classList.remove('panning');
+    positionFloatBar();
   });
+
+  stageWrap.addEventListener('scroll', positionFloatBar);
+  window.addEventListener('resize', positionFloatBar);
 
   window.addEventListener('keyup', (e) => {
     if (e.code === 'Space') {
@@ -449,9 +561,39 @@
   });
 
   // Pointer selection & live drag-to-move
-  let dragMode = null;
   let startX = 0, startY = 0;
   let origTransforms = new Map();
+
+  function selectWholeLines() {
+    if (!selected.size) return;
+    const lids = new Set();
+    selected.forEach(gid => {
+      const el = document.getElementById(gid);
+      const lid = el && el.getAttribute('data-line');
+      if (lid) lids.add(lid);
+    });
+    lids.forEach(lid => {
+      document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
+    });
+    updateSelectionUI();
+    toast(`已选中整行（共 ${selected.size} 个字）`);
+  }
+
+  function selectWholeGroups() {
+    if (!selected.size) return;
+    const grps = new Set();
+    selected.forEach(gid => {
+      const el = document.getElementById(gid);
+      const g = el && el.getAttribute('data-group');
+      if (g) grps.add(g);
+    });
+    if (!grps.size) { toast('所选内容不属于表格或草图块'); return; }
+    grps.forEach(grp => {
+      document.querySelectorAll(`.sc-glyph[data-group="${grp}"]`).forEach(el => selected.add(el.id));
+    });
+    updateSelectionUI();
+    toast(`已选中整块（共 ${selected.size} 个图元）`);
+  }
 
   paperFrame.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
@@ -459,13 +601,19 @@
     startX = e.clientX;
     startY = e.clientY;
     if (gEl) {
+      const grp = gEl.getAttribute('data-group');
+      const isTableBorder = grp && gEl.getAttribute('data-ch') === 'table_rule';
       if (e.shiftKey) {
         if (selected.has(gEl.id)) selected.delete(gEl.id); else selected.add(gEl.id);
       } else if (!selected.has(gEl.id)) {
-        selected = new Set([gEl.id]);
+        if (isTableBorder) {
+          selected = new Set(Array.from(document.querySelectorAll(`.sc-glyph[data-group="${grp}"]`)).map(el => el.id));
+        } else {
+          selected = new Set([gEl.id]);
+        }
       }
-      updateSelectionUI();
       dragMode = 'move';
+      updateSelectionUI();
       origTransforms.clear();
       selected.forEach(gid => {
         const el = document.getElementById(gid);
@@ -473,8 +621,8 @@
       });
     } else {
       if (!e.shiftKey) selected.clear();
-      updateSelectionUI();
       dragMode = 'marquee';
+      updateSelectionUI();
       marqueeEl.style.left = startX + 'px';
       marqueeEl.style.top = startY + 'px';
       marqueeEl.style.width = '0px';
@@ -486,6 +634,13 @@
   paperFrame.addEventListener('dblclick', (e) => {
     const gEl = e.target.closest('.sc-glyph');
     if (!gEl) return;
+    const grp = gEl.getAttribute('data-group');
+    if (grp) {
+      document.querySelectorAll(`.sc-glyph[data-group="${grp}"]`).forEach(el => selected.add(el.id));
+      updateSelectionUI();
+      toast(`已选中整个表格/草图（共 ${selected.size} 个图元）`);
+      return;
+    }
     const lid = gEl.getAttribute('data-line');
     if (!lid) return;
     document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
@@ -529,8 +684,8 @@
             selected.add(g.id);
           }
         });
-        updateSelectionUI();
       }
+      updateSelectionUI();
     } else if (mode === 'move' && selected.size > 0) {
       const pr = paperFrame.getBoundingClientRect();
       const mmPerPx = pageWidthMm / Math.max(1, pr.width);
@@ -543,10 +698,42 @@
           const el = document.getElementById(gid);
           if (el) el.setAttribute('transform', baseTf);
         });
+        positionFloatBar();
       }
       origTransforms.clear();
     }
   });
+
+  let nudgeAcc = { dx: 0, dy: 0, timer: null, baseMap: new Map(), ids: null };
+  function queueNudge(dxStep, dyStep) {
+    if (!selected.size) return;
+    if (!nudgeAcc.timer) {
+      nudgeAcc.dx = 0; nudgeAcc.dy = 0;
+      nudgeAcc.ids = Array.from(selected);
+      nudgeAcc.baseMap.clear();
+      nudgeAcc.ids.forEach(gid => {
+        const el = document.getElementById(gid);
+        if (el) nudgeAcc.baseMap.set(gid, el.getAttribute('transform') || '');
+      });
+    }
+    nudgeAcc.dx += dxStep;
+    nudgeAcc.dy += dyStep;
+    nudgeAcc.baseMap.forEach((baseTf, gid) => {
+      const el = document.getElementById(gid);
+      if (el) el.setAttribute('transform', `translate(${nudgeAcc.dx.toFixed(3)},${nudgeAcc.dy.toFixed(3)}) ${baseTf}`);
+    });
+    document.getElementById('st-drag').textContent = `${nudgeAcc.dx >= 0 ? '+' : ''}${nudgeAcc.dx.toFixed(2)}, ${nudgeAcc.dy >= 0 ? '+' : ''}${nudgeAcc.dy.toFixed(2)} mm`;
+    positionFloatBar();
+    clearTimeout(nudgeAcc.timer);
+    nudgeAcc.timer = setTimeout(async () => {
+      const { dx, dy, ids } = nudgeAcc;
+      nudgeAcc.timer = null; nudgeAcc.dx = 0; nudgeAcc.dy = 0; nudgeAcc.baseMap.clear();
+      document.getElementById('st-drag').textContent = '-';
+      if (ids && ids.length && (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01)) {
+        await sendOp({ op: 'move', ids, dx, dy });
+      }
+    }, 220);
+  }
 
   async function doReroll() {
     if (!selected.size) { toast('请先点击或框选要换写法的字'); return; }
@@ -557,7 +744,8 @@
   }
 
   window.addEventListener('keydown', async (e) => {
-    if (e.code === 'Space' && !/INPUT|TEXTAREA/.test((e.target && e.target.tagName) || '')) {
+    if (/INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '')) return;
+    if (e.code === 'Space') {
       e.preventDefault();
       if (!spaceHeld) {
         spaceHeld = true;
@@ -573,6 +761,19 @@
       toast('已撤销上一步');
       return;
     }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      selected = new Set(Array.from(document.querySelectorAll('.sc-glyph')).map(g => g.id));
+      updateSelectionUI();
+      toast(`已全选本页（共 ${selected.size} 个图元）`);
+      return;
+    }
+    if (e.key === '0' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); applyZoom(1.0); return; }
+    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      applyZoom(Math.max(320, stageWrap.clientWidth - 60) / BASE_PX);
+      return;
+    }
     if (e.key === 'Escape') {
       if (selected.size > 0) {
         selected.clear();
@@ -582,29 +783,18 @@
     }
     if (!selected.size) return;
     const step = e.shiftKey ? 1.0 : 0.25;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: -step, dy: 0 }); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: step, dy: 0 }); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: 0, dy: -step }); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: 0, dy: step }); }
-    else if (e.key.toLowerCase() === 'l') {
-      const lids = new Set();
-      selected.forEach(gid => {
-        const el = document.getElementById(gid);
-        const lid = el && el.getAttribute('data-line');
-        if (lid) lids.add(lid);
-      });
-      lids.forEach(lid => {
-        document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
-      });
-      updateSelectionUI();
-      toast(`已选中整行（共 ${selected.size} 个字）`);
-    }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); queueNudge(-step, 0); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); queueNudge(step, 0); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); queueNudge(0, -step); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); queueNudge(0, step); }
+    else if (e.key.toLowerCase() === 'l') { selectWholeLines(); }
+    else if (e.key.toLowerCase() === 'g') { selectWholeGroups(); }
     else if (e.key.toLowerCase() === 'r') { await doReroll(); }
     else if (e.key === '+' || e.key === '=') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }); }
     else if (e.key === '-') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }); }
     else if (e.key === ']') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }); }
     else if (e.key === '[') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }); }
-    else if (e.key === 'Delete' || e.key === 'Backspace') { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); toast('已隐藏选中字'); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); updateSelectionUI(); toast('已隐藏选中字'); }
   });
 
   document.getElementById('btn-prev').onclick = () => { if (currentPage > 0) { currentPage--; selected.clear(); refreshPage(); } };
@@ -617,14 +807,16 @@
     applyZoom(avail / BASE_PX);
   };
   document.getElementById('btn-reroll').onclick = doReroll;
+  document.getElementById('btn-sel-line').onclick = selectWholeLines;
+  document.getElementById('btn-sel-group').onclick = selectWholeGroups;
   document.getElementById('btn-scale-up').onclick = () => selected.size ? sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }) : toast('请先选中字');
   document.getElementById('btn-scale-dn').onclick = () => selected.size ? sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }) : toast('请先选中字');
   document.getElementById('btn-rot-l').onclick = () => selected.size ? sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }) : toast('请先选中字');
   document.getElementById('btn-rot-r').onclick = () => selected.size ? sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }) : toast('请先选中字');
-  document.getElementById('btn-hide').onclick = async () => { if (selected.size) { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); toast('已隐藏选中字'); } else { toast('请先选中要隐藏的字'); } };
+  document.getElementById('btn-hide').onclick = async () => { if (selected.size) { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); updateSelectionUI(); toast('已隐藏选中字'); } else { toast('请先选中要隐藏的字'); } };
   document.getElementById('btn-tighten').onclick = async () => { const r = await sendOp({ action: 'tighten' }); if (r) toast(r.added ? `已收拢 ${r.added} 处空隙` : '当前没有明显过宽的空隙'); };
   document.getElementById('btn-drift').onclick = async () => { const r = await sendOp({ action: 'drift', force: true }); if (r) toast('已应用自然右漂'); };
-  document.getElementById('btn-inspect').onclick = (e) => { showOverlay = !showOverlay; e.target.classList.toggle('active', showOverlay); renderAnomalies(); };
+  document.getElementById('chk-inspect').onchange = (e) => { showOverlay = e.target.checked; renderAnomalies(); };
   document.getElementById('btn-undo').onclick = async () => { await api('/api/undo', 'POST', {}); await refreshPage(); toast('已撤销上一步'); };
   document.getElementById('btn-reset').onclick = async () => { await api('/api/reset', 'POST', {}); selected.clear(); await refreshPage(); toast('已还原全部修改'); };
   document.querySelectorAll('.swatch').forEach(btn => {
@@ -664,7 +856,6 @@
     }
   };
 
-  document.getElementById('btn-inspect').classList.add('active');
   refreshPage();
 })();
 </script>

@@ -1660,6 +1660,13 @@
         return m ? parseFloat(m[1]) : 0.0;
       }
 
+      document.querySelectorAll('main#page-root .hw-table-wrap').forEach((el, idx) => {
+        el.dataset.hwGroup = `tbl_${idx}`;
+      });
+      document.querySelectorAll('main#page-root .hw-sketch-wrap').forEach((el, idx) => {
+        el.dataset.hwGroup = `sk_${idx}`;
+      });
+
       const rawGlyphs = [];
       let maxPage = Math.max(0, document.querySelectorAll('.ov-page').length - 1);
       document.querySelectorAll('main#page-root svg.pg-svg, main#page-root svg.hw-hand-svg').forEach(sv => {
@@ -1702,6 +1709,7 @@
         const hMm = rc.height / pxPerMm;
         if (pageIdx > maxPage) maxPage = pageIdx;
         const qSec = sv.closest('[data-qnum]');
+        const grpEl = sv.closest('[data-hw-group]');
         rawGlyphs.push({
           page: pageIdx,
           ch: sv.dataset.ch || '',
@@ -1709,6 +1717,7 @@
           vidx: parseInt(sv.dataset.vidx || '0', 10) || 0,
           in_math: sv.dataset.inMath === '1',
           qnum: qSec ? String(qSec.dataset.qnum || '') : '',
+          group: grpEl ? (grpEl.dataset.hwGroup || '') : '',
           x: Number(xMm.toFixed(3)),
           y: Number(yMm.toFixed(3)),
           w: Number(wMm.toFixed(3)),

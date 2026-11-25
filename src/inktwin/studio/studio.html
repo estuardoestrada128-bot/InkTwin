@@ -1233,7 +1233,8 @@ $('#btn-pv-pdf-modal').onclick = () => {
 $('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/scene/editor', {});
   S.editorOpened = true;
-  window.open(j.url, '_blank');
+  const sep = j.url.includes('?') ? '&' : '?';
+  window.open(j.url + sep + 'return=' + encodeURIComponent(location.origin + '/#preview'), '_blank');
 });
 
 async function syncFromEditor() {
@@ -1253,9 +1254,40 @@ async function syncFromEditor() {
 window.addEventListener('focus', syncFromEditor);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncFromEditor(); });
 
+window.addEventListener('keydown', (e) => {
+  if (!$('#tab-preview').classList.contains('active')) return;
+  if (/INPUT|TEXTAREA|SELECT/.test((e.target && e.target.tagName) || '')) return;
+  if ($('#pv-modal').classList.contains('open')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    const u = $('#btn-op-undo');
+    if (u && !u.disabled) { e.preventDefault(); u.click(); }
+    return;
+  }
+  if (!S.lastPdfPreviews.length) return;
+  if (e.key === '+' || e.key === '=') {
+    e.preventDefault(); S.userZoomed = true; applyPreviewZoom(S.previewZoom * 1.2);
+  } else if (e.key === '-') {
+    e.preventDefault(); S.userZoomed = true; applyPreviewZoom(S.previewZoom / 1.2);
+  } else if (e.key === '0') {
+    e.preventDefault(); S.userZoomed = true; applyPreviewZoom(1.0);
+  }
+});
+
 $('#md').value = SAMPLE_MD;
 syncOverlayUI();
-loadState().then(restoreDraft).catch(e => toast(e.message, true));
+loadState().then(async () => {
+  restoreDraft();
+  if (location.hash === '#preview') {
+    try {
+      const j = await fetch('/api/scene/sync?force=1').then(r => r.json());
+      if (j && j.ok && j.pdf_url) {
+        S.editorOpened = true;
+        await showSnapshot(j);
+        switchTab('preview');
+      }
+    } catch (_) {}
+  }
+}).catch(e => toast(e.message, true));
 </script>
 </body>
 </html>

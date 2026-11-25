@@ -104,6 +104,26 @@ def run_phase5_tests() -> None:
             )
             assert rn["ok"] and len(rn["previews"]) >= 1 and rn["inspect"]["glyph_count"] > 5
 
+            # Verify table border and table cell glyphs drift synchronously (zero relative shift!)
+            from inktwin.scene import load_inkscene, resolve_scene_state
+            sc_tbl, ed_tbl, _ = load_inkscene(st.current["scene"])
+            before_tbl = {
+                g["id"]: g["x"]
+                for g in resolve_scene_state(sc_tbl, ed_tbl)["glyphs"]
+                if g.get("group")
+            }
+            assert any(g.get("ch") == "table_rule" and g.get("group") for g in sc_tbl["glyphs"])
+            op_d = _http_post_json(base_url + "api/scene/ops", {"action": "drift", "force": True})
+            assert op_d["ok"] and op_d["inspect"]["anomaly_counts"].get("gap", 0) == 0
+            sc_tbl2, ed_tbl2, _ = load_inkscene(st.current["scene"])
+            after_tbl = {
+                g["id"]: g["x"]
+                for g in resolve_scene_state(sc_tbl2, ed_tbl2)["glyphs"]
+                if g.get("group")
+            }
+            table_deltas = {round(after_tbl[gid] - before_tbl[gid], 3) for gid in before_tbl}
+            assert len(table_deltas) == 1, f"Table glyphs drifted unequally: {table_deltas}"
+
             op_t = _http_post_json(base_url + "api/scene/ops", {"action": "tighten"})
             assert op_t["ok"]
             op_p = _http_post_json(base_url + "api/scene/ops", {"action": "repen", "pen_type": "pencil"})

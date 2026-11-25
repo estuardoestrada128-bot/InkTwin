@@ -639,6 +639,7 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                         self._json({"ok": False, "error": str(exc)}, 500)
                 return
             if clean == "/api/scene/sync":
+                force = "force=1" in (self.path.split("?", 1)[1] if "?" in self.path else "")
                 with st.lock:
                     try:
                         cur = st.current
@@ -646,10 +647,11 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                             self._json({"ok": True, "changed": False})
                             return
                         sig = _edits_sig(cur["scene"])
-                        if sig == cur.get("edits_sig"):
+                        if not force and sig == cur.get("edits_sig"):
                             self._json({"ok": True, "changed": False})
                             return
-                        export_scene(cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
+                        if sig != cur.get("edits_sig"):
+                            export_scene(cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
                         snap = _snapshot(st)
                         snap["changed"] = True
                         self._json(snap)

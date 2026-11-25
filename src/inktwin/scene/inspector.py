@@ -18,6 +18,40 @@ def _overlap_area(a: dict, b: dict) -> float:
     return (x1 - x0) * (y1 - y0)
 
 
+def build_rigid_groups(glyphs: List[dict]) -> Dict[str, str]:
+    """Return mapping glyph_id -> group_id for rigid blocks (tables / sketches)."""
+    gid_to_group: Dict[str, str] = {}
+    vis = [g for g in glyphs if not g.get("hidden") and g.get("id")]
+    for g in vis:
+        grp = g.get("group")
+        if grp:
+            gid_to_group[str(g["id"])] = str(grp)
+
+    # Geometric fallback for legacy scenes recorded without explicit g["group"]
+    auto_idx = 0
+    for tr in vis:
+        tr_id = str(tr["id"])
+        if tr.get("ch") != "table_rule" or tr_id in gid_to_group:
+            continue
+        grp = f"tbl_auto_{auto_idx}"
+        auto_idx += 1
+        gid_to_group[tr_id] = grp
+        pg = tr.get("page")
+        x0 = float(tr["x"]) - 2.0
+        y0 = float(tr["y"]) - 2.0
+        x1 = float(tr["x"]) + float(tr["w"]) + 2.0
+        y1 = float(tr["y"]) + float(tr["h"]) + 2.0
+        for g in vis:
+            gid = str(g["id"])
+            if gid in gid_to_group or g.get("page") != pg:
+                continue
+            cx = float(g["x"]) + float(g["w"]) * 0.5
+            cy = float(g["y"]) + float(g["h"]) * 0.5
+            if x0 <= cx <= x1 and y0 <= cy <= y1:
+                gid_to_group[gid] = grp
+    return gid_to_group
+
+
 def inspect_scene(scene: dict, edits: List[dict], max_gap_ratio: float = 0.95) -> dict:
     """Scan resolved InkScene for spacing gaps, glyph overlaps, margin/page violations, and ruler-straight left edges."""
     resolved = resolve_scene_state(scene, edits)
@@ -28,6 +62,7 @@ def inspect_scene(scene: dict, edits: List[dict], max_gap_ratio: float = 0.95) -
     grid_lock = bool(paper.get("grid_lock", False))
 
     by_id: Dict[str, dict] = {g["id"]: g for g in resolved["glyphs"] if not g.get("hidden")}
+    rigid_groups = build_rigid_groups(resolved["glyphs"])
     obstacles = resolved.get("obstacles", [])
 
     anomalies: List[dict] = []
@@ -43,8 +78,10 @@ def inspect_scene(scene: dict, edits: List[dict], max_gap_ratio: float = 0.95) -
         if not ln.get("grid", False):
             for idx in range(len(g_list) - 1):
                 a, b = g_list[idx], g_list[idx + 1]
-                # Skip vertical/math sub/superscript pairs or accent decorations over same x
+                # Skip vertical/math sub/superscript pairs, accent decorations, and rigid table/sketch columns
                 if a.get("cat") == "struct" or b.get("cat") == "struct":
+                    continue
+                if a["id"] in rigid_groups or b["id"] in rigid_groups:
                     continue
                 gap_mm = b["x"] - (a["x"] + a["w"])
                 # Ignore wide intentional multi-column gaps (>= 11 mm) or negative kerning
