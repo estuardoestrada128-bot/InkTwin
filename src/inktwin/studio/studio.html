@@ -58,6 +58,31 @@
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes sp { to { transform: rotate(360deg); } }
   .empty { color: var(--muted); text-align: center; padding: 60px 0; }
+  .vi-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .vi-head select { width: auto; min-width: 220px; }
+  .vi-pills { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 12px; align-items: center; }
+  .vi-pills .pill.warn { background: #fdf3e3; color: var(--warn); }
+  .vi-pills .pill.gray { background: #eceff5; color: var(--muted); }
+  .vi-pills .pill.click { cursor: pointer; }
+  .vi-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .vi-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .vi-tabs button { border: 1px solid var(--line); background: #fff; padding: 5px 10px; border-radius: 999px; font-size: 12.5px; cursor: pointer; color: var(--muted); }
+  .vi-tabs button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .vi-bar input { width: 180px; margin-left: auto; }
+  .vg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .vg-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fcfcfd; }
+  .vg-card.flagged { border-color: #eab3b1; background: #fffafa; }
+  .vg-ch { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+  .vg-ch b { font-size: 17px; }
+  .vg-ch small { color: var(--muted); font-size: 11.5px; }
+  .vg-vars { display: flex; gap: 6px; flex-wrap: wrap; }
+  .vg-var { position: relative; width: 62px; border: 1px solid var(--line); border-radius: 7px; background: #fff; padding: 5px 4px 3px; text-align: center; }
+  .vg-var.bad { border-color: var(--bad); background: #fff5f5; }
+  .vg-var svg { width: 52px; height: 46px; display: block; margin: 0 auto; }
+  .vg-var .meta { font-size: 10px; color: var(--muted); margin-top: 2px; line-height: 1.25; }
+  .vg-var .fl { display: inline-block; font-size: 10px; color: var(--bad); font-weight: 600; margin-top: 1px; }
+  .vg-var .vdel { position: absolute; right: 2px; top: 1px; width: 16px; height: 16px; border: 0; border-radius: 999px; background: rgba(198,51,47,.1); color: var(--bad); cursor: pointer; font-size: 12px; line-height: 16px; padding: 0; }
+  .vg-var .vdel:hover { background: var(--bad); color: #fff; }
 </style>
 </head>
 <body>
@@ -80,7 +105,7 @@
         <p class="desc">打印或导入平板笔记（StarNote / GoodNotes），用深色笔在蓝框内书写，不要遮住四角青色定位块。</p>
         <label>字帖层级</label>
         <select id="tpl-tier">
-          <option value="tier1">Tier 1 · 极速启动帖（2 页）</option>
+          <option value="tier1">Tier 1 · 基础多变体采集帖（3 页）</option>
           <option value="tier2">Tier 2 · 希腊字母与物理符号（1 页）</option>
           <option value="targeted">靶向微字帖（自定义 / 按排版稿缺字）</option>
         </select>
@@ -114,6 +139,33 @@
         <div class="actions"><button class="btn primary" id="btn-fb">编译字体</button></div>
         <div id="fb-out" class="files"></div>
       </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="vi-head">
+        <h2 style="margin:0">4. 字库变体体检 &amp; 删坏字</h2>
+        <select id="vi-pack" class="pack-select"></select>
+        <button class="btn" id="btn-vi-load">刷新体检</button>
+        <button class="btn" id="btn-vi-clone" title="复制一份到 packs/local/ 以便安全删改">克隆到本地编辑</button>
+        <button class="btn" id="btn-vi-supp" title="把当前字库里只有 1 个变体的字母和符号填入上方「靶向微字帖」">给单变体符号出补字帖</button>
+      </div>
+      <p class="desc">逐字预览每个手写变体的真实矢量轮廓，自动标出过粗、过细、比例偏离或残缺的疑似坏字；本地字库（<code>packs/local/</code>）可直接点右上角 × 删除坏变体。</p>
+      <div id="vi-summary" class="vi-pills"></div>
+      <div id="vi-missing" class="out" hidden style="margin-top:0;margin-bottom:10px"></div>
+      <div class="vi-bar">
+        <div class="vi-tabs" id="vi-tabs">
+          <button data-vf="all" class="active">全部</button>
+          <button data-vf="flagged">疑似异常</button>
+          <button data-vf="single">仅 1 变体</button>
+          <button data-vf="alnum">数字与字母</button>
+          <button data-vf="math">数学符号</button>
+          <button data-vf="struct">结构符号</button>
+          <button data-vf="cjk">汉字</button>
+        </div>
+        <input id="vi-search" type="text" placeholder="搜索字符，如 a / 0 / 的" />
+      </div>
+      <div id="vi-grid" class="vg-grid"><div class="empty" style="grid-column:1/-1;padding:28px 0">切换到字库工坊后将自动加载字库变体…</div></div>
+      <div class="actions" style="justify-content:center"><button class="btn" id="btn-vi-more" hidden>加载更多</button></div>
     </div>
   </section>
 
@@ -208,7 +260,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [] };
+const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60 };
 
 const SAMPLE_MD = `---
 title: 微积分作业 W3
@@ -266,6 +318,7 @@ function fileToB64(file) {
 function switchTab(name) {
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+  if (name === 'forge' && !S.packInspect && S.packs.length) loadPackInspect();
 }
 $$('nav button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 
@@ -299,6 +352,8 @@ $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
   const o = $('#hv-out'); o.hidden = false;
   o.textContent = `✓ ${r.id}：填写 ${r.filled_cells}/${r.total_cells} 格，新增 ${r.added_glyphs} 字 / ${r.added_variants} 变体 / ${r.added_strokes} 笔画 / ${r.added_radicals} 偏旁\n共 ${r.total_chars} 字 · ${r.total_variants} 变体\n${r.pack}`;
   await loadState();
+  $('#vi-pack').value = r.id;
+  await loadPackInspect();
   toast('建库完成：' + r.id);
 });
 
@@ -307,6 +362,147 @@ $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
   const r = j.result;
   $('#fb-out').innerHTML = `<a href="${j.font_url}" download>下载 ${r.family}.${r.format}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
 });
+
+const STRUCT_NAMES = {
+  '__FRAC_SHORT__': '短分线', '__FRAC_MED__': '中分线', '__FRAC_LONG__': '长分线',
+  '__SQRT_HOOK__': '根号√', '__OVERLINE__': '上横ˉ',
+};
+
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+async function loadPackInspect() {
+  const pid = $('#vi-pack').value || (S.packs[0] && S.packs[0].id);
+  if (!pid) return;
+  const j = await api('/api/pack/inspect', { pack: pid });
+  S.packInspect = j;
+  S.viLimit = 60;
+  renderPackInspect();
+}
+
+function renderPackInspect() {
+  const data = S.packInspect;
+  if (!data) return;
+  const pk = data.pack;
+  const st = pk.strokes || {};
+  $('#vi-summary').innerHTML =
+    `<span class="pill ${pk.editable ? 'ok' : 'gray'}">${pk.editable ? '本地可编辑' : '公开只读示例'}</span>` +
+    `<span class="pill">${pk.total_chars} 字符 · ${pk.total_variants} 变体（汉字 ${pk.cjk_chars}）</span>` +
+    `<span class="pill click ${pk.flagged_variants ? 'bad' : 'ok'}" data-jump="flagged">疑似异常 ${pk.flagged_variants} 变体（${pk.flagged_chars} 字）</span>` +
+    `<span class="pill click ${pk.single_variant_chars ? 'warn' : 'ok'}" data-jump="single">仅 1 变体 ${pk.single_variant_chars} 字</span>` +
+    `<span class="pill gray">中位笔重 t=${pk.median_t} · 偏旁 ${pk.radicals_count}/24 · 笔画 横${st.H||0}/竖${st.V||0}/撇${st.P||0}/捺${st.N||0}/点${st.D||0}</span>`;
+  $$('#vi-summary [data-jump]').forEach(el => el.onclick = () => {
+    S.viFilter = el.dataset.jump; S.viLimit = 60;
+    $$('#vi-tabs button').forEach(b => b.classList.toggle('active', b.dataset.vf === S.viFilter));
+    renderPackInspect();
+  });
+
+  const miss = $('#vi-missing');
+  if (pk.missing_radicals && pk.missing_radicals.length) {
+    miss.hidden = false;
+    miss.textContent = `缺少 ${pk.missing_radicals.length} 个常用偏旁（可填 Tier 1 第 3 页补齐，明显提升生字合成效果）：${pk.missing_radicals.join(' ')}`;
+  } else {
+    miss.hidden = true;
+  }
+
+  const q = ($('#vi-search').value || '').trim().toLowerCase();
+  const filtered = data.items.filter(it => {
+    if (S.viFilter === 'flagged' && !it.flagged) return false;
+    if (S.viFilter === 'single' && it.variants.length !== 1) return false;
+    if (['alnum', 'math', 'struct', 'cjk'].includes(S.viFilter) && it.group !== S.viFilter) return false;
+    if (q) {
+      const disp = (STRUCT_NAMES[it.char] || it.char).toLowerCase();
+      if (!it.char.toLowerCase().includes(q) && !disp.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const grid = $('#vi-grid');
+  if (!filtered.length) {
+    grid.innerHTML = '<div class="empty" style="grid-column:1/-1;padding:28px 0">当前筛选条件下没有匹配的字符。</div>';
+    $('#btn-vi-more').hidden = true;
+    return;
+  }
+
+  const shown = filtered.slice(0, S.viLimit);
+  grid.innerHTML = shown.map(it => {
+    const label = escHtml(STRUCT_NAMES[it.char] || it.char);
+    const chAttr = escHtml(it.char);
+    const varsHtml = it.variants.map(v => {
+      const w = Math.max(10, v.w || 70), h = Math.max(10, v.h || 100);
+      const pad = Math.max(w, h) * 0.1;
+      const vb = `${(-pad).toFixed(1)} ${(-pad).toFixed(1)} ${(w + pad * 2).toFixed(1)} ${(h + pad * 2).toFixed(1)}`;
+      const shape = v.fill
+        ? `<path d="${escHtml(v.d)}" fill="#1d2230" fill-rule="nonzero"/>`
+        : `<path d="${escHtml(v.d)}" fill="none" stroke="#1d2230" stroke-width="${Math.max(2, v.t || 4)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const fl = v.flags && v.flags.length ? `<div class="fl">${escHtml(v.flags.join('·'))}</div>` : '';
+      const delBtn = pk.editable
+        ? `<button class="vdel" title="删除此变体" data-del-char="${chAttr}" data-del-idx="${v.vidx}" data-del-cnt="${it.variants.length}">×</button>`
+        : '';
+      return `<div class="vg-var ${v.flags && v.flags.length ? 'bad' : ''}">${delBtn}<svg viewBox="${vb}" preserveAspectRatio="xMidYMid meet">${shape}</svg><div class="meta">#${v.vidx + 1} · t=${v.t}</div>${fl}</div>`;
+    }).join('');
+    return `<div class="vg-card ${it.flagged ? 'flagged' : ''}"><div class="vg-ch"><b>${label}</b><small>${escHtml(it.cat)} · ${it.variants.length} 变体</small></div><div class="vg-vars">${varsHtml}</div></div>`;
+  }).join('');
+
+  const moreBtn = $('#btn-vi-more');
+  if (filtered.length > S.viLimit) {
+    moreBtn.hidden = false;
+    moreBtn.textContent = `加载更多（已显示 ${shown.length} / ${filtered.length} 字）`;
+  } else {
+    moreBtn.hidden = true;
+  }
+
+  $$('#vi-grid .vdel').forEach(btn => btn.onclick = async () => {
+    const ch = btn.dataset.delChar;
+    const vidx = parseInt(btn.dataset.delIdx, 10);
+    const cnt = parseInt(btn.dataset.delCnt, 10);
+    if (cnt <= 1 && !confirm(`这是「${STRUCT_NAMES[ch] || ch}」仅剩的最后一个变体，删除后会移除该字符，确定删除？`)) return;
+    btn.disabled = true;
+    try {
+      await api('/api/pack/delete-variant', { pack: pk.id, char: ch, vidx });
+      toast(`已删除「${STRUCT_NAMES[ch] || ch}」的第 ${vidx + 1} 个变体`);
+      await loadState();
+      $('#vi-pack').value = pk.id;
+      await loadPackInspect();
+    } catch (e) {
+      toast(e.message, true);
+      btn.disabled = false;
+    }
+  });
+}
+
+$('#btn-vi-load').onclick = (e) => busy(e.currentTarget, loadPackInspect);
+$('#vi-pack').onchange = () => loadPackInspect().catch(e => toast(e.message, true));
+$('#vi-search').oninput = () => { S.viLimit = 60; renderPackInspect(); };
+$('#btn-vi-more').onclick = () => { S.viLimit += 80; renderPackInspect(); };
+$$('#vi-tabs button').forEach(b => b.onclick = () => {
+  S.viFilter = b.dataset.vf; S.viLimit = 60;
+  $$('#vi-tabs button').forEach(x => x.classList.toggle('active', x === b));
+  renderPackInspect();
+});
+
+$('#btn-vi-clone').onclick = (e) => busy(e.currentTarget, async () => {
+  const src = $('#vi-pack').value;
+  if (!src) throw new Error('请先选择字库');
+  const newId = prompt('输入本地副本字库 ID（将保存到 packs/local/）：', src + '_copy');
+  if (!newId || !newId.trim()) return;
+  const j = await api('/api/pack/clone-local', { pack: src, new_id: newId.trim() });
+  await loadState();
+  $('#vi-pack').value = j.id;
+  await loadPackInspect();
+  toast('已克隆到本地字库：' + j.id);
+});
+
+$('#btn-vi-supp').onclick = () => {
+  if (!S.packInspect) { toast('请先加载字库体检', true); return; }
+  const low = S.packInspect.pack.low_variant_non_cjk || [];
+  if (!low.length) { toast('当前字库的字母与符号都已有多个变体！'); return; }
+  $('#tpl-tier').value = 'targeted';
+  $('#tpl-chars').value = low.join('');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast(`已填入 ${low.length} 个单变体符号到「靶向微字帖」，点击「生成字帖 PDF」即可下载`);
+};
 
 /* ---------------- Compose ---------------- */
 function renderOptions() {

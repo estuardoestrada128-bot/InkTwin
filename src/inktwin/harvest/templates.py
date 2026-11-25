@@ -209,21 +209,34 @@ def build_template_cells(
         cells = _pack_items_to_cells(0, items, prefix="t2")
         return cells, {0: "InkTwin Tier-2 Extension Sheet (Greek, Physics Symbols & STEM Hanzi)"}
 
-    # Default: tier1 (2 comprehensive pages)
+    # Default: tier1 (3 comprehensive pages with built-in multi-variant coverage)
+    # Page 0: Digits (x3), Lowercase (x2-x3), Uppercase (x1-x2) -> 148 cells
     p0_items: List[Tuple[str, str, str, str]] = []
-    # Digits x2 (20)
     for d in "0123456789":
-        p0_items.extend([("glyph", d, d, "height100"), ("glyph", d, d, "height100")])
-    # Lowercase a-z + high-freq vars (36)
-    for ch in "abcdefghijklmnopqrstuvwxyzxyztnkijfg":
-        p0_items.append(("glyph", ch, ch, "height100"))
-    # Uppercase A-Z (26)
+        for _ in range(3):
+            p0_items.append(("glyph", d, d, "height100"))
+    high_lower = set("xyztnkijaeosrmfgduvp")
+    for ch in "abcdefghijklmnopqrstuvwxyz":
+        reps = 3 if ch in high_lower else 2
+        for _ in range(reps):
+            p0_items.append(("glyph", ch, ch, "height100"))
+    high_upper = set("ABCDEFIMLNPRSTUVWXYZ")
     for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-        p0_items.append(("glyph", ch, ch, "height100"))
-    # Operators & Delimiters (32)
-    for ch in "+-*/=≠≈<>≤≥()[]{}|±×÷·.,:;!?%'\"":
-        p0_items.append(("glyph", ch, ch, "height100"))
-    # Structural Math & Arrows (10)
+        reps = 2 if ch in high_upper else 1
+        for _ in range(reps):
+            p0_items.append(("glyph", ch, ch, "height100"))
+    c0 = _pack_items_to_cells(0, p0_items, prefix="t1p0")
+
+    # Page 1: Math Operators & Delimiters (x2-x3), Arrows & Structural Bars (x2), Core Greek & Calculus (x1-x2) -> 136 cells
+    p1_items: List[Tuple[str, str, str, str]] = []
+    for ch in "=+-(),.":
+        for _ in range(3):
+            p1_items.append(("glyph", ch, ch, "height100"))
+    for ch in "*/≠≈<>≤≥[]{}|±×÷·:;!?":
+        for _ in range(2):
+            p1_items.append(("glyph", ch, ch, "height100"))
+    for ch in "%'\"":
+        p1_items.append(("glyph", ch, ch, "height100"))
     struct = [
         ("→", "→"),
         ("←", "←"),
@@ -238,26 +251,31 @@ def build_template_cells(
     ]
     for k, lbl in struct:
         nm = "width100" if k.startswith("__FRAC") else "height100"
-        p0_items.append(("glyph", k, lbl, nm))
-    # Core Greek & Calculus (28)
-    for ch in "αβγδεθλμπρσφωΔΣΩ∫∑∂∇∞∈∀∃∧∨∩∪":
-        p0_items.append(("glyph", ch, ch, "height100"))
-
-    c0 = _pack_items_to_cells(0, p0_items, prefix="t1p0")
-
-    # Page 1: Strokes + Radicals + 80 Core STEM CJK
-    p1_items: List[Tuple[str, str, str, str]] = []
-    for st, cnt in (("H", 5), ("V", 5), ("P", 4), ("N", 4), ("D", 6)):
-        for _ in range(cnt):
-            p1_items.append(("stroke", st, _STROKE_LABELS[st], "height100"))
-    for rad in _CORE_RADICALS:
-        p1_items.append(("radical", rad, f"部{rad}", "height100"))
-    for ch in _TIER1_STEM_CJK:
+        for _ in range(2):
+            p1_items.append(("glyph", k, lbl, nm))
+    for ch in "αβγδεθλμπρσφωΔΣΩ∫∑∂∇∞∈":
+        for _ in range(2):
+            p1_items.append(("glyph", ch, ch, "height100"))
+    for ch in "∀∃∧∨∩∪":
         p1_items.append(("glyph", ch, ch, "height100"))
     c1 = _pack_items_to_cells(1, p1_items, prefix="t1p1")
-    return c0 + c1, {
-        0: "InkTwin Tier-1 Collection Sheet (1/2): Digits, Letters, Math Symbols & Structural Bars",
-        1: "InkTwin Tier-1 Collection Sheet (2/2): Stroke DNA, 24 Radicals & 80 Core STEM Hanzi",
+
+    # Page 2: Stroke DNA (26), 24 Radicals, 80 Core STEM CJK (+ 16 high-freq extra variants) -> 146 cells
+    p2_items: List[Tuple[str, str, str, str]] = []
+    for st, cnt in (("H", 5), ("V", 5), ("P", 5), ("N", 5), ("D", 6)):
+        for _ in range(cnt):
+            p2_items.append(("stroke", st, _STROKE_LABELS[st], "height100"))
+    for rad in _CORE_RADICALS:
+        p2_items.append(("radical", rad, f"部{rad}", "height100"))
+    for ch in _TIER1_STEM_CJK:
+        p2_items.append(("glyph", ch, ch, "height100"))
+    for ch in "的是在不了有和为中大对成分等数函":
+        p2_items.append(("glyph", ch, ch, "height100"))
+    c2 = _pack_items_to_cells(2, p2_items, prefix="t1p2")
+    return c0 + c1 + c2, {
+        0: "InkTwin Tier-1 Sheet (1/3): Multi-Variant Digits, Lowercase & Uppercase Letters",
+        1: "InkTwin Tier-1 Sheet (2/3): Multi-Variant Math Operators, Delimiters, Bars & Greek",
+        2: "InkTwin Tier-1 Sheet (3/3): Stroke DNA, 24 Core Radicals & Core STEM Hanzi",
     }
 
 

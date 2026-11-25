@@ -70,13 +70,19 @@ def run_phase3_tests() -> None:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
 
-        # 1. Generate Tier-1 template & verify fiducials + embedded spec
+        # 1. Generate Tier-1 template & verify fiducials + embedded spec + multi-variant coverage
         t1_pdf = tmp / "tier1.pdf"
         res_t1 = generate_template_pdf(t1_pdf, tier="tier1")
-        assert res_t1["pages"] == 2
-        assert res_t1["cells"] > 200
+        assert res_t1["pages"] == 3
+        assert res_t1["cells"] > 400
         spec_t1 = read_template_spec_from_pdf(t1_pdf)
         assert spec_t1["tier"] == "tier1"
+        from collections import Counter
+        t1_counts = Counter(c["key"] for c in spec_t1["cells"] if c["kind"] == "glyph")
+        assert all(t1_counts[d] == 3 for d in "0123456789")
+        assert all(t1_counts[ch] >= 2 for ch in "abcdefghijklmnopqrstuvwxyz")
+        assert all(t1_counts[ch] == 3 for ch in "xtnae=+-()")
+        assert t1_counts["__FRAC_MED__"] == 2 and t1_counts["__SQRT_HOOK__"] == 2
 
         # 2. Generate Targeted template + fill vector ink + harvest + merge-into
         tgt_pdf = tmp / "targeted.pdf"

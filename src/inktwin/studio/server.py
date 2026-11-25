@@ -14,17 +14,22 @@ import tempfile
 import threading
 import traceback
 import webbrowser
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 import fitz
+import numpy as np
 
 from .. import LOCAL_PACKS_DIR, __version__
 from ..fontgen import build_opentype_font
 from ..harvest import generate_template_pdf, harvest_template_pdf
+from ..harvest.templates import _CORE_RADICALS
 from ..overlay import detect_pdf_layout
 from ..pack import list_packs, load_pack
+from ..pack.facets import compute_facets
+from ..pack.schema import save_pack_zip
 from ..preflight import run_doctor
 from ..scene import export_scene, inspect_scene, load_inkscene
 from ..scene.ops import apply_drift, apply_tighten, make_atomic_ops, next_batch_id, undo_last_batch
@@ -315,6 +320,189 @@ def api_fontbuild(st: StudioState, p: dict) -> dict:
     return {"ok": True, "result": res, "font_url": st.url_for(out)}
 
 
+def _is_local_pack(path: Path) -> bool:
+    try:
+        path.resolve().relative_to(LOCAL_PACKS_DIR.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _pack_char_group(ch: str, cat: str) -> str:
+    if cat == "cjk":
+        return "cjk"
+    if len(ch) == 1 and (ch.isdigit() or ("a" <= ch.lower() <= "z")):
+        return "alnum"
+    if ch.startswith("__") or cat in ("frac_bar", "accent_bar", "accent_hat", "delim"):
+        return "struct"
+    return "math"
+
+
+def _pack_char_sort_key(ch: str, cat: str) -> Tuple[int, str]:
+    if len(ch) == 1 and ch.isdigit():
+        return (0, ch)
+    if len(ch) == 1 and "a" <= ch <= "z":
+        return (1, ch)
+    if len(ch) == 1 and "A" <= ch <= "Z":
+        return (2, ch)
+    if cat != "cjk" and not ch.startswith("__"):
+        return (3, ch)
+    if ch.startswith("__"):
+        return (4, ch)
+    return (5, ch)
+
+
+def api_pack_inspect(st: StudioState, p: dict) -> dict:
+    pk = load_pack(p.get("pack") or None)
+    editable = _is_local_pack(pk.source_path) and pk.source_path.is_file()
+
+    # Compute pack-level median thickness for outlier detection (skip bars/dots/punct)
+    all_ts: List[float] = []
+    for entry in pk.glyphs.values():
+        cat = entry.get("cat", "")
+        if cat in ("frac_bar", "accent_bar", "dot", "punct"):
+            continue
+        for v in entry.get("v", []):
+            if isinstance(v, dict) and isinstance(v.get("t"), (int, float)) and float(v["t"]) > 0:
+                all_ts.append(float(v["t"]))
+    med_t = float(np.median(all_ts)) if all_ts else 4.8
+
+    items: List[dict] = []
+    single_variant_chars = 0
+    flagged_variants = 0
+    flagged_chars = 0
+    low_variant_non_cjk: List[str] = []
+
+    for ch in sorted(pk.glyphs.keys(), key=lambda c: _pack_char_sort_key(c, pk.glyphs[c].get("cat", ""))):
+        entry = pk.glyphs[ch]
+        cat = entry.get("cat", "cap")
+        group = _pack_char_group(ch, cat)
+        raw_vs = [v for v in entry.get("v", []) if isinstance(v, dict)]
+
+        asps = [
+            float(v["w"]) / float(v["h"])
+            for v in raw_vs
+            if float(v.get("h") or 0) > 0 and float(v.get("w") or 0) > 0
+        ]
+        char_med_asp = float(np.median(asps)) if len(asps) >= 2 else 0.0
+
+        v_out: List[dict] = []
+        char_has_flag = False
+        for idx, v in enumerate(raw_vs):
+            w = float(v.get("w") or 70.0)
+            h = float(v.get("h") or 100.0)
+            t = float(v.get("t") or 0.0)
+            d = str(v.get("d") or "")
+            flags: List[str] = []
+            if len(d.strip()) < 12:
+                flags.append("残缺")
+            if cat not in ("frac_bar", "accent_bar", "dot", "punct"):
+                if t > max(med_t * 1.55, 9.2):
+                    flags.append("过粗")
+                elif 0.0 < t < min(med_t * 0.52, 2.1):
+                    flags.append("过细")
+            if char_med_asp > 0.0 and w > 0.0 and h > 0.0:
+                ratio = (w / h) / char_med_asp
+                if ratio > 1.75 or ratio < 0.57:
+                    flags.append("比例偏离")
+            if flags:
+                flagged_variants += 1
+                char_has_flag = True
+            v_out.append(
+                {
+                    "vidx": idx,
+                    "w": round(w, 1),
+                    "h": round(h, 1),
+                    "t": round(t, 2),
+                    "fill": bool(v.get("fill", True)),
+                    "d": d,
+                    "flags": flags,
+                }
+            )
+        if char_has_flag:
+            flagged_chars += 1
+        if len(v_out) == 1:
+            single_variant_chars += 1
+            if group != "cjk" and not ch.startswith("__"):
+                low_variant_non_cjk.append(ch)
+        items.append({"char": ch, "cat": cat, "group": group, "variants": v_out, "flagged": char_has_flag})
+
+    missing_radicals = [r for r in _CORE_RADICALS if r not in pk.radicals]
+    strokes_counts = {k: len(pk.strokes.get(k, [])) for k in ("H", "V", "P", "N", "D")}
+    return {
+        "ok": True,
+        "pack": {
+            "id": pk.id,
+            "scope": "local" if editable else "public",
+            "editable": editable,
+            "path": str(pk.source_path),
+            "total_chars": len(pk.glyphs),
+            "total_variants": pk.variant_count,
+            "cjk_chars": pk.real_cjk_count,
+            "single_variant_chars": single_variant_chars,
+            "flagged_variants": flagged_variants,
+            "flagged_chars": flagged_chars,
+            "median_t": round(med_t, 2),
+            "radicals_count": len(pk.radicals),
+            "missing_radicals": missing_radicals,
+            "strokes": strokes_counts,
+            "low_variant_non_cjk": low_variant_non_cjk,
+        },
+        "items": items,
+    }
+
+
+def api_pack_delete_variant(st: StudioState, p: dict) -> dict:
+    pk = load_pack(p.get("pack") or None)
+    if not (_is_local_pack(pk.source_path) and pk.source_path.is_file()):
+        raise PermissionError("公开示例字库为只读，无法直接删除；请先点击「克隆到本地」再编辑。")
+    ch = p.get("char")
+    if not ch or ch not in pk.glyphs:
+        raise ValueError(f"Character not found in pack: {ch!r}")
+    variants = pk.glyphs[ch].get("v", [])
+    vidx = int(p.get("vidx", -1))
+    if vidx < 0 or vidx >= len(variants):
+        raise ValueError(f"Variant index out of range: {vidx} (len={len(variants)})")
+
+    variants.pop(vidx)
+    remaining = len(variants)
+    if remaining == 0:
+        del pk.glyphs[ch]
+
+    manifest = dict(pk.manifest)
+    manifest["total_chars"] = len(pk.glyphs)
+    manifest["total_variants"] = pk.variant_count
+    manifest["facets"] = compute_facets(pk.glyphs, pk.style_model)
+    manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    tmp_path = pk.source_path.with_suffix(".hwpack.tmp")
+    save_pack_zip(tmp_path, manifest, pk.glyphs, pk.style_model, pk.radicals, pk.strokes)
+    tmp_path.replace(pk.source_path)
+    return {
+        "ok": True,
+        "pack": pk.id,
+        "deleted": {"char": ch, "vidx": vidx, "remaining": remaining},
+        "total_chars": len(pk.glyphs),
+        "total_variants": pk.variant_count,
+    }
+
+
+def api_pack_clone_local(st: StudioState, p: dict) -> dict:
+    pk = load_pack(p.get("pack") or None)
+    raw_id = (p.get("new_id") or f"{pk.id}_local").strip()
+    new_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id) or f"{pk.id}_local"
+    out_path = (LOCAL_PACKS_DIR / f"{new_id}.hwpack").resolve()
+    if out_path.exists():
+        raise FileExistsError(f"本地字库 {new_id}.hwpack 已存在，请换一个名称。")
+    manifest = dict(pk.manifest)
+    manifest["id"] = new_id
+    manifest["privacy"] = "local"
+    manifest["cloned_from"] = pk.id
+    manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_pack_zip(out_path, manifest, pk.glyphs, pk.style_model, pk.radicals, pk.strokes)
+    return {"ok": True, "id": new_id, "path": str(out_path)}
+
+
 ROUTES_POST: Dict[str, Callable[[StudioState, dict], dict]] = {
     "/api/preflight": api_preflight,
     "/api/render": api_render,
@@ -325,6 +513,9 @@ ROUTES_POST: Dict[str, Callable[[StudioState, dict], dict]] = {
     "/api/template": api_template,
     "/api/harvest": api_harvest,
     "/api/fontbuild": api_fontbuild,
+    "/api/pack/inspect": api_pack_inspect,
+    "/api/pack/delete-variant": api_pack_delete_variant,
+    "/api/pack/clone-local": api_pack_clone_local,
 }
 
 

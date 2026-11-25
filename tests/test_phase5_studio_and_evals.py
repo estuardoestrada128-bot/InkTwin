@@ -85,6 +85,41 @@ def run_phase5_tests() -> None:
             assert fb["ok"] and fb["result"]["mapped_chars"] > 250
             ttf_bytes = _http_get(base_url.rstrip("/") + fb["font_url"])
             assert len(ttf_bytes) > 10000
+
+            # 5b. POST /api/pack/inspect, read-only guard on public pack, clone-local & delete-variant
+            insp_pub = _http_post_json(base_url + "api/pack/inspect", {"pack": "demo_sample"})
+            assert insp_pub["ok"] and insp_pub["pack"]["editable"] is False
+            assert len(insp_pub["items"]) > 200 and insp_pub["pack"]["median_t"] > 0
+
+            # Attempting to delete from public demo_sample must be rejected (HTTP 400)
+            import urllib.error
+            try:
+                _http_post_json(base_url + "api/pack/delete-variant", {"pack": "demo_sample", "char": "0", "vidx": 0})
+                raise AssertionError("Expected read-only rejection on demo_sample")
+            except urllib.error.HTTPError as he:
+                assert he.code == 400
+
+            clone_id = f"_tmp_p5_clone_{port}"
+            clone_path = None
+            try:
+                cl = _http_post_json(base_url + "api/pack/clone-local", {"pack": "demo_sample", "new_id": clone_id})
+                assert cl["ok"] and cl["id"] == clone_id
+                clone_path = Path(cl["path"])
+                assert clone_path.exists()
+
+                insp_loc = _http_post_json(base_url + "api/pack/inspect", {"pack": clone_id})
+                assert insp_loc["ok"] and insp_loc["pack"]["editable"] is True
+                before_v = insp_loc["pack"]["total_variants"]
+                target_item = next(it for it in insp_loc["items"] if len(it["variants"]) >= 2)
+                del_res = _http_post_json(
+                    base_url + "api/pack/delete-variant",
+                    {"pack": clone_id, "char": target_item["char"], "vidx": 0},
+                )
+                assert del_res["ok"] and del_res["total_variants"] == before_v - 1
+                assert del_res["deleted"]["remaining"] == len(target_item["variants"]) - 1
+            finally:
+                if clone_path and clone_path.exists():
+                    clone_path.unlink()
         finally:
             for es in st.editor_servers:
                 es.shutdown()
