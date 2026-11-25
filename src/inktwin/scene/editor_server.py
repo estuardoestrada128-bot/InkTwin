@@ -75,6 +75,34 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                     self._send_json({"ok": True, "page": pidx, "svg": svg_str})
                     return
 
+                if clean == "/api/download":
+                    from urllib.parse import parse_qs, unquote, urlparse
+
+                    qs = parse_qs(urlparse(self.path).query)
+                    rel = unquote((qs.get("file") or [""])[0])
+                    target = (resolved_dir / rel).resolve()
+                    try:
+                        target.relative_to(resolved_dir.resolve())
+                    except ValueError:
+                        self._send_json({"ok": False, "error": "forbidden"}, 403)
+                        return
+                    if not target.is_file():
+                        self._send_json({"ok": False, "error": "not found"}, 404)
+                        return
+                    ctype = {
+                        ".pdf": "application/pdf",
+                        ".png": "image/png",
+                        ".svg": "image/svg+xml",
+                    }.get(target.suffix.lower(), "application/octet-stream")
+                    data = target.read_bytes()
+                    self.send_response(200)
+                    self.send_header("Content-Type", ctype)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.send_header("Content-Disposition", f'attachment; filename="{target.name}"')
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+
             self._send_json({"ok": False, "error": "not found"}, 404)
 
         def do_POST(self):
@@ -128,9 +156,19 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                         return
 
                     if clean == "/api/export":
+                        from urllib.parse import quote
+
                         fmt = payload.get("format", "pdf")
                         transp = bool(payload.get("transparent", False))
                         res = export_scene(sdir, fmt=fmt, transparent=transp)
+                        urls = []
+                        for out_f in res.get("outputs", []):
+                            try:
+                                rel = Path(out_f).resolve().relative_to(resolved_dir.resolve()).as_posix()
+                                urls.append("/api/download?file=" + quote(rel))
+                            except ValueError:
+                                pass
+                        res["download_urls"] = urls
                         self._send_json(res)
                         return
                 except Exception as exc:

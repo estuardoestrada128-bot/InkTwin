@@ -117,12 +117,12 @@
       </div>
       <div class="card">
         <h2>2. 导入写好的字帖 → 建库</h2>
-        <p class="desc">零 OCR 矢量提取：靶标对齐 → 子路径切分 → EDT 0.74px 保压感校准，保存到 packs/local/（不会进入 git）。</p>
+        <p class="desc">上传平板导出的矢量 PDF，自动切格提取并校准笔重，保存到 <code>packs/local/</code>（不会被提交到 Git）。</p>
         <label>已填写字帖 PDF</label>
         <input id="hv-file" type="file" accept="application/pdf" />
         <div class="row">
-          <div><label>字库 ID</label><input id="hv-id" type="text" value="my_hand" /></div>
-          <div><label>合并到已有字库（可选）</label><select id="hv-merge"><option value="">（新建）</option></select></div>
+          <div><label>合并到已有字库（可选）</label><select id="hv-merge"><option value="">（新建字库）</option></select></div>
+          <div><label>保存后的字库 ID</label><input id="hv-id" type="text" value="my_hand" placeholder="同名即增量更新" /></div>
         </div>
         <div class="actions"><button class="btn primary" id="btn-hv">提取并建库</button></div>
         <div id="hv-out" class="out" hidden></div>
@@ -177,10 +177,11 @@
         <p class="desc">支持 <code>$...$</code> 公式、Markdown 表格、<code>```handplot</code> 草图块（number_line / func / fbd）。按 <code>## 1.</code> / <code>## Problem 1</code> 分题。</p>
         <textarea id="md"></textarea>
         <div class="actions">
-          <button class="btn" id="btn-preflight">预检 Preflight</button>
+          <button class="btn" id="btn-preflight">预检缺字与公式</button>
           <button class="btn primary" id="btn-render">生成仿手写 PDF</button>
         </div>
         <div id="pf-out" class="out" hidden></div>
+        <div id="pf-act" class="actions" style="margin-top:6px" hidden></div>
       </div>
       <div class="grid" style="align-content:start">
         <div class="card">
@@ -202,16 +203,16 @@
           </div>
           <div class="row">
             <div><label>字号 (pt)</label><input id="opt-fs" type="number" value="12" step="0.5" min="8" max="20" /></div>
-            <div><label>随机种子（可选）</label><input id="opt-seed" type="number" placeholder="自动" /></div>
-            <div><label>页眉标签</label><input id="opt-tag" type="text" placeholder="W10" /></div>
+            <div><label title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机">随机种子（可选）</label><input id="opt-seed" type="number" placeholder="留空自动" title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机" /></div>
+            <div><label>页眉标签（可选）</label><input id="opt-tag" type="text" placeholder="如 W10" /></div>
           </div>
         </div>
         <div class="card">
           <h2>原题空白卷叠写（可选）</h2>
-          <p class="desc">上传空白作业 / 试卷 PDF，自动识别题号与留白框；可拖动、缩放、增删答题框，点击 Q 标签改题号。</p>
+          <p class="desc">选择空白作业/试卷 PDF 后会自动识别题号与留白框；可拖动、缩放、增删答题框，点 Q 标签改题号。</p>
           <input id="ov-file" type="file" accept="application/pdf" />
           <div class="actions">
-            <button class="btn" id="btn-detect">检测留白框</button>
+            <button class="btn" id="btn-detect">重新检测留白框</button>
             <button class="btn" id="btn-clear-ov">移除原卷</button>
           </div>
           <div id="ov-info" class="out" hidden></div>
@@ -227,27 +228,28 @@
       <div class="card"><div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div></div>
       <div class="grid" style="align-content:start">
         <div class="card">
-          <h2>几何质检 Inspect</h2>
-          <div id="insp"></div>
+          <h2>版面体检与微调</h2>
+          <div id="insp"><div class="out" style="margin-top:0">请先在「排版」页生成 PDF。</div></div>
           <div class="actions">
-            <button class="btn" data-op="tighten">收拢空隙 tighten</button>
-            <button class="btn" data-op="drift">自然右漂 drift</button>
-            <button class="btn" data-op="undo">撤销</button>
-            <button class="btn" data-op="reset">还原</button>
+            <button class="btn need-render" data-op="tighten" disabled title="自动收拢异常偏大的字间距">收拢空隙</button>
+            <button class="btn need-render" data-op="drift" disabled title="为过齐的左边缘增加自然手写起伏">自然右漂</button>
+            <button class="btn need-render" data-op="undo" disabled>撤销</button>
+            <button class="btn need-render" data-op="reset" disabled>还原</button>
+            <button class="btn need-render" data-op="refresh" disabled title="如果你刚在逐字编辑器里修改过，点此同步刷新预览">刷新预览</button>
           </div>
           <label>切换笔触材质后重绘</label>
           <div class="row">
             <select id="pv-pen"><option value="gel">中性笔 gel</option><option value="ballpoint">圆珠笔</option><option value="fountain">钢笔</option><option value="pencil">铅笔</option></select>
-            <button class="btn" id="btn-repen">重绘</button>
+            <button class="btn need-render" id="btn-repen" disabled>重绘</button>
           </div>
         </div>
         <div class="card">
-          <h2>导出</h2>
+          <h2>导出与逐字编辑</h2>
           <div class="actions">
-            <button class="btn primary" data-export="pdf">PDF</button>
-            <button class="btn" data-export="svg">透明 SVG 图层</button>
-            <button class="btn" data-export="png">透明 PNG 图层</button>
-            <button class="btn" id="btn-editor">高级逐字编辑器 ↗</button>
+            <button class="btn primary need-render" data-export="pdf" disabled>下载 PDF</button>
+            <button class="btn need-render" data-export="svg" disabled>透明 SVG 图层</button>
+            <button class="btn need-render" data-export="png" disabled>透明 PNG 图层</button>
+            <button class="btn need-render" id="btn-editor" disabled>逐字微调编辑器 ↗</button>
           </div>
           <div id="exp-out" class="files"></div>
         </div>
@@ -355,12 +357,23 @@ async function loadState() {
     sel.innerHTML = S.packs.map(p => `<option value="${p.id}">${p.id}（${p.scope} · ${p.total_chars} 字 / ${p.variants} 变体）</option>`).join('');
     if (prev) sel.value = prev;
   });
-  $('#hv-merge').innerHTML = '<option value="">（新建）</option>' + S.packs.map(p => `<option value="${p.id}">${p.id}</option>`).join('');
+  const prevMerge = $('#hv-merge').value;
+  $('#hv-merge').innerHTML = '<option value="">（新建字库）</option>' + S.packs.map(p => `<option value="${p.id}">${p.id}（${p.scope === 'local' ? '本地 · 直接增量更新' : '公开 · 将另存到 local'}）</option>`).join('');
+  if (prevMerge) $('#hv-merge').value = prevMerge;
 }
+
+$('#hv-merge').onchange = () => {
+  const m = $('#hv-merge').value;
+  if (!m) return;
+  const pk = S.packs.find(p => p.id === m);
+  if (pk && pk.scope === 'local') $('#hv-id').value = pk.id;
+  else if (pk) $('#hv-id').value = pk.id + '_custom';
+};
 
 /* ---------------- Forge ---------------- */
 $('#btn-tpl').onclick = (e) => busy(e.currentTarget, async () => {
-  const j = await api('/api/template', { tier: 'targeted', chars: $('#tpl-chars').value.trim(), markdown: $('#md').value, pack: $('#opt-pack').value });
+  const packId = $('#vi-pack').value || $('#opt-pack').value;
+  const j = await api('/api/template', { tier: 'targeted', chars: $('#tpl-chars').value.trim(), markdown: $('#md').value, pack: packId });
   $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" download="InkTwin-Targeted.pdf">下载补字帖 PDF（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
   $('#tpl-thumbs').innerHTML = j.previews.map(s => `<img src="${s}">`).join('');
   const a = document.createElement('a'); a.href = j.pdf_url; a.download = 'InkTwin-Targeted.pdf'; a.click();
@@ -382,7 +395,10 @@ $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
 $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/fontbuild', { pack: $('#fb-pack').value, format: $('#fb-fmt').value, name: $('#fb-name').value.trim() });
   const r = j.result;
-  $('#fb-out').innerHTML = `<a href="${j.font_url}" download>下载 ${r.family}.${r.format}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
+  const fname = `${r.family}.${r.format}`;
+  $('#fb-out').innerHTML = `<a href="${j.font_url}" download="${escHtml(fname)}">下载 ${escHtml(fname)}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
+  const a = document.createElement('a'); a.href = j.font_url; a.download = fname; a.click();
+  toast('编译完成，已开始下载：' + fname);
 });
 
 const STRUCT_NAMES = {
@@ -394,12 +410,12 @@ function escHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-async function loadPackInspect() {
+async function loadPackInspect(keepLimit = false) {
   const pid = $('#vi-pack').value || (S.packs[0] && S.packs[0].id);
   if (!pid) return;
   const j = await api('/api/pack/inspect', { pack: pid });
   S.packInspect = j;
-  S.viLimit = 60;
+  if (!keepLimit) S.viLimit = 60;
   renderPackInspect();
 }
 
@@ -482,11 +498,13 @@ function renderPackInspect() {
     if (cnt <= 1 && !confirm(`这是「${STRUCT_NAMES[ch] || ch}」仅剩的最后一个变体，删除后会移除该字符，确定删除？`)) return;
     btn.disabled = true;
     try {
+      const sy = window.scrollY;
       await api('/api/pack/delete-variant', { pack: pk.id, char: ch, vidx });
       toast(`已删除「${STRUCT_NAMES[ch] || ch}」的第 ${vidx + 1} 个变体`);
       await loadState();
       $('#vi-pack').value = pk.id;
-      await loadPackInspect();
+      await loadPackInspect(true);
+      window.scrollTo({ top: sy });
     } catch (e) {
       toast(e.message, true);
       btn.disabled = false;
@@ -535,15 +553,38 @@ function renderOptions() {
   };
 }
 
+$('#opt-pen').onchange = () => {
+  if ($('#opt-pen').value === 'pencil') $('#opt-ink').value = 'pencil';
+  else if ($('#opt-ink').value === 'pencil') $('#opt-ink').value = 'black';
+};
+
 $('#btn-preflight').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/preflight', { markdown: $('#md').value, pack: $('#opt-pack').value });
   const r = j.report, c = r.cjk;
   const o = $('#pf-out'); o.hidden = false;
-  o.textContent = `真迹汉字覆盖：${c.real_in_pack}/${c.total_unique}（${(c.real_coverage_ratio * 100).toFixed(1)}%）\n合成兜底生字（${c.synthesized_unseen}）：${(c.unseen_chars || []).join('')}\n长公式断行：${(r.formula_splits || []).length} 处\n可用宽度：${r.usable_width_mm} mm`;
-  if (c.unseen_chars && c.unseen_chars.length) $('#tpl-chars').value = c.unseen_chars.slice(0, 40).join('');
+  o.textContent = `真迹汉字覆盖：${c.real_in_pack}/${c.total_unique}（${(c.real_coverage_ratio * 100).toFixed(1)}%）\n合成兜底生字（${c.synthesized_unseen}）：${(c.unseen_chars || []).join('') || '无'}\n长公式断行：${(r.formula_splits || []).length} 处\n可用宽度：${r.usable_width_mm} mm`;
+  const act = $('#pf-act');
+  if (c.unseen_chars && c.unseen_chars.length) {
+    const chars = c.unseen_chars.slice(0, 72).join('');
+    $('#tpl-chars').value = chars;
+    act.hidden = false;
+    act.innerHTML = `<button class="btn" id="btn-pf-supp">→ 给这 ${c.unseen_chars.length} 个生字去生成补字帖</button>`;
+    $('#btn-pf-supp').onclick = () => {
+      $('#vi-pack').value = $('#opt-pack').value;
+      switchTab('forge');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      toast('已自动填入缺字，点击「生成并下载补字帖 PDF」即可');
+    };
+  } else {
+    act.hidden = true;
+    act.innerHTML = '';
+  }
 });
 
 $('#btn-render').onclick = (e) => busy(e.currentTarget, async () => {
+  if (!S.overlayB64 && $('#ov-file').files[0]) {
+    S.overlayB64 = await fileToB64($('#ov-file').files[0]);
+  }
   const j = await api('/api/render', renderOptions());
   showSnapshot(j);
   $('#pv-pen').value = $('#opt-pen').value;
@@ -551,16 +592,21 @@ $('#btn-render').onclick = (e) => busy(e.currentTarget, async () => {
   toast('已生成：' + j.inspect.glyph_count + ' 个手写图元');
 });
 
-$('#btn-detect').onclick = (e) => busy(e.currentTarget, async () => {
+async function runLayoutDetect() {
   const f = $('#ov-file').files[0];
   if (!f) throw new Error('请先选择空白原卷 PDF');
   S.overlayB64 = await fileToB64(f);
   const j = await api('/api/layout-detect', { pdf_b64: S.overlayB64 });
   S.layout = j.layout; S.layoutPreviews = j.previews;
   const o = $('#ov-info'); o.hidden = false;
-  o.textContent = `${j.layout.pages.length} 页 · ${j.layout.boxes.length} 个答题框 · ${j.layout.obstacles.length} 个题干/图形障碍`;
+  o.textContent = `已加载原卷：${j.layout.pages.length} 页 · ${j.layout.boxes.length} 个答题框 · ${j.layout.obstacles.length} 个题干/图形障碍`;
   renderLayoutEditor();
-});
+}
+
+$('#ov-file').onchange = () => {
+  if ($('#ov-file').files[0]) busy($('#btn-detect'), runLayoutDetect);
+};
+$('#btn-detect').onclick = (e) => busy(e.currentTarget, runLayoutDetect);
 
 $('#btn-clear-ov').onclick = () => {
   S.overlayB64 = null; S.layout = null; S.layoutPreviews = [];
@@ -596,7 +642,10 @@ function renderLayoutEditor() {
         const sx = ev.clientX, sy = ev.clientY, o = { ...b };
         const move = (mv) => {
           const dx = (mv.clientX - sx) * mmPerPx, dy = (mv.clientY - sy) * mmPerPx;
-          if (resize) { b.w_mm = Math.max(20, o.w_mm + dx); b.h_mm = Math.max(10, o.h_mm + dy); }
+          if (resize) {
+            b.w_mm = Math.min(pg.width_mm - b.x_mm, Math.max(20, o.w_mm + dx));
+            b.h_mm = Math.min(pg.height_mm - b.y_mm, Math.max(10, o.h_mm + dy));
+          }
           else { b.x_mm = Math.min(pg.width_mm - b.w_mm, Math.max(0, o.x_mm + dx)); b.y_mm = Math.min(pg.height_mm - b.h_mm, Math.max(0, o.y_mm + dy)); }
           placeBox(bx, b, pg);
         };
@@ -623,21 +672,22 @@ function renderLayoutEditor() {
 
 /* ---------------- Preview ---------------- */
 function showSnapshot(j) {
+  $$('.need-render').forEach(b => b.disabled = false);
   $('#pages').innerHTML = j.previews.map((s, i) => `<img src="${s}" alt="page ${i + 1}">`).join('');
   const ins = j.inspect, ac = ins.anomaly_counts || {};
   const row = (k, label, crit) => { const v = ac[k] || 0; const cls = v === 0 ? 'ok' : (crit ? 'bad' : 'warn'); return `<div class="stat"><span>${label}</span><b class="${cls}">${v}</b></div>`; };
   $('#insp').innerHTML =
     `<div class="stat"><span>页数 / 行数 / 手写图元</span><b>${ins.pages} / ${ins.line_count} / ${ins.glyph_count}</b></div>` +
-    row('prompt_collision', '压题干 prompt_collision', true) + row('outside_margin', '越界 outside_margin', true) +
-    row('overlap', '墨迹重叠 overlap', false) + row('gap', '大空隙 gap', false) + row('left_edges_aligned', '左边缘过齐 left_edges_aligned', false) +
+    row('prompt_collision', '压题干', true) + row('outside_margin', '越界', true) +
+    row('overlap', '墨迹重叠', false) + row('gap', '大空隙', false) + row('left_edges_aligned', '左边缘过齐', false) +
     `<div class="stat"><span>已追加编辑</span><b>${j.edits_count}</b></div>` +
     (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '') +
-    `<div class="files"><a href="${j.pdf_url}" target="_blank">打开当前 PDF ↗</a></div>`;
+    `<div class="files"><a href="${j.pdf_url}" target="_blank">在新标签页预览当前 PDF ↗</a></div>`;
 }
 
 $$('[data-op]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/scene/ops', { action: b.dataset.op });
-  showSnapshot(j); toast('已应用：' + b.dataset.op);
+  showSnapshot(j); toast('已完成：' + b.textContent.trim());
 }));
 
 $('#btn-repen').onclick = (e) => busy(e.currentTarget, async () => {
@@ -648,7 +698,16 @@ $('#btn-repen').onclick = (e) => busy(e.currentTarget, async () => {
 $$('[data-export]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   const fmt = b.dataset.export;
   const j = await api('/api/scene/export', { format: fmt, transparent: fmt !== 'pdf' });
-  $('#exp-out').innerHTML = j.files.map(f => `<a href="${f}" target="_blank">${f.split('/').pop()}</a>`).join('');
+  $('#exp-out').innerHTML = j.files.map(f => {
+    const fn = f.split('/').pop();
+    return `<a href="${f}" download="${escHtml(fn)}">⬇ 下载 ${escHtml(fn)}</a>`;
+  }).join('');
+  if (j.files.length === 1) {
+    const a = document.createElement('a'); a.href = j.files[0]; a.download = j.files[0].split('/').pop(); a.click();
+    toast('已导出并开始下载：' + a.download);
+  } else {
+    toast(`已导出 ${j.files.length} 页，点击下方链接下载`);
+  }
 }));
 
 $('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {

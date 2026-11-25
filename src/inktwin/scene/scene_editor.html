@@ -130,28 +130,28 @@
 </head>
 <body>
 <header>
-  <span class="brand">InkTwin Scene Editor</span>
-  <button id="btn-prev">&lt;</button>
-  <span id="page-label">Page 1 / 1</span>
-  <button id="btn-next">&gt;</button>
+  <span class="brand">InkTwin 逐字编辑器</span>
+  <button id="btn-prev" title="上一页">&lt;</button>
+  <span id="page-label">第 1 / 1 页</span>
+  <button id="btn-next" title="下一页">&gt;</button>
   <span class="sep"></span>
-  <button id="btn-reroll" title="Switch real handwriting variant (R)">Reroll Variant (R)</button>
-  <button id="btn-tighten">Tighten Gaps</button>
-  <button id="btn-drift">Natural Drift</button>
-  <button id="btn-hide" title="Hide selected glyphs (Delete)">Hide (Del)</button>
+  <button id="btn-reroll" title="切换到该字符的另一个手写变体 (R)">换写法 (R)</button>
+  <button id="btn-tighten" title="自动收拢过大字距">收拢空隙</button>
+  <button id="btn-drift" title="为过于整齐的左边缘增加自然起伏">自然右漂</button>
+  <button id="btn-hide" title="隐藏选中的字 (Delete)">隐藏 (Del)</button>
   <span class="sep"></span>
-  <span>Ink:</span>
-  <button class="swatch" data-color="black" style="background:#111318" title="Black"></button>
-  <button class="swatch" data-color="blue" style="background:#19378a" title="Blue"></button>
-  <button class="swatch" data-color="darkblue" style="background:#13244b" title="DarkBlue"></button>
-  <button class="swatch" data-color="red" style="background:#c6332f" title="Red Correction"></button>
+  <span>笔色:</span>
+  <button class="swatch" data-color="black" style="background:#111318" title="黑笔"></button>
+  <button class="swatch" data-color="blue" style="background:#19378a" title="蓝笔"></button>
+  <button class="swatch" data-color="darkblue" style="background:#13244b" title="深蓝"></button>
+  <button class="swatch" data-color="red" style="background:#c6332f" title="红笔批注"></button>
   <span class="sep"></span>
-  <button id="btn-inspect">Inspect Overlay</button>
-  <button id="btn-undo" title="Ctrl+Z">Undo</button>
-  <button id="btn-reset">Reset</button>
+  <button id="btn-inspect">显示异常红框</button>
+  <button id="btn-undo" title="Ctrl+Z">撤销</button>
+  <button id="btn-reset">还原</button>
   <span class="sep"></span>
-  <button class="primary" id="btn-export-pdf">Export PDF</button>
-  <button id="btn-export-png">Export Transparent PNG</button>
+  <button class="primary" id="btn-export-pdf">导出并下载 PDF</button>
+  <button id="btn-export-png">导出透明 PNG</button>
 </header>
 
 <main>
@@ -162,23 +162,23 @@
     </div>
   </div>
   <aside>
-    <h3>Scene Status</h3>
-    <div class="kv"><span>Pack</span><strong id="st-pack">-</strong></div>
-    <div class="kv"><span>Paper</span><strong id="st-paper">-</strong></div>
-    <div class="kv"><span>Edits</span><strong id="st-edits">0</strong></div>
-    <div class="kv"><span>Selected</span><strong id="st-sel">0</strong></div>
+    <h3>场景状态</h3>
+    <div class="kv"><span>字库</span><strong id="st-pack">-</strong></div>
+    <div class="kv"><span>底纸</span><strong id="st-paper">-</strong></div>
+    <div class="kv"><span>已编辑步数</span><strong id="st-edits">0</strong></div>
+    <div class="kv"><span>当前选中</span><strong id="st-sel">0</strong></div>
 
-    <h3>Shortcuts</h3>
+    <h3>快捷键</h3>
     <div style="color:var(--muted)">
-      Click / Drag box: select glyphs<br/>
-      Double-click or <span class="kbd">L</span>: select line<br/>
-      Drag or <span class="kbd">Arrows</span>: nudge (<span class="kbd">Shift</span> ×5)<br/>
-      <span class="kbd">R</span>: reroll real variant<br/>
-      <span class="kbd">+</span>/<span class="kbd">-</span>: scale · <span class="kbd">[</span>/<span class="kbd">]</span>: rotate<br/>
-      <span class="kbd">Ctrl+Z</span>: undo batch
+      单击 / 框选：选中单字或多个字<br/>
+      双击或按 <span class="kbd">L</span>：选中整行<br/>
+      拖动或方向键：微调位置（按住 <span class="kbd">Shift</span> ×4）<br/>
+      <span class="kbd">R</span>：切换该字的另一手写变体<br/>
+      <span class="kbd">+</span>/<span class="kbd">-</span>：缩放 · <span class="kbd">[</span>/<span class="kbd">]</span>：微旋<br/>
+      <span class="kbd">Del</span>：隐藏选中字 · <span class="kbd">Ctrl+Z</span>：撤销
     </div>
 
-    <h3>Inspector Anomalies</h3>
+    <h3>质检异常列表</h3>
     <div id="anom-list"></div>
   </aside>
 </main>
@@ -233,7 +233,7 @@
 
     const anoms = (inspectData && inspectData.anomalies) ? inspectData.anomalies : [];
     if (!anoms.length) {
-      list.innerHTML = '<div style="color:#6ce59f">0 anomalies detected.</div>';
+      list.innerHTML = '<div style="color:#6ce59f">未检出异常。</div>';
       return;
     }
     anoms.slice(0, 40).forEach(a => {
@@ -282,7 +282,7 @@
     document.getElementById('st-paper').textContent = st.paper_id || '-';
     document.getElementById('st-edits').textContent = String(st.edits_count || 0);
     inspectData = st.inspect;
-    document.getElementById('page-label').textContent = `Page ${currentPage + 1} / ${totalPages}`;
+    document.getElementById('page-label').textContent = `第 ${currentPage + 1} / ${totalPages} 页`;
     renderAnomalies();
   }
 
@@ -392,7 +392,20 @@
     else if (e.key === 'ArrowRight') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: step, dy: 0 }); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: 0, dy: -step }); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: 0, dy: step }); }
-    else if (e.key.toLowerCase() === 'r') { await sendOp({ op: 'reroll', ids: Array.from(selected) }); toast('Rerolled variant'); }
+    else if (e.key.toLowerCase() === 'l') {
+      const lids = new Set();
+      selected.forEach(gid => {
+        const el = document.getElementById(gid);
+        const lid = el && el.getAttribute('data-line');
+        if (lid) lids.add(lid);
+      });
+      lids.forEach(lid => {
+        document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
+      });
+      updateSelectionUI();
+      toast(`已选中整行（共 ${selected.size} 个字）`);
+    }
+    else if (e.key.toLowerCase() === 'r') { await sendOp({ op: 'reroll', ids: Array.from(selected) }); toast('已切换手写变体'); }
     else if (e.key === '+' || e.key === '=') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }); }
     else if (e.key === '-') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }); }
     else if (e.key === ']') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }); }
@@ -402,23 +415,30 @@
 
   document.getElementById('btn-prev').onclick = () => { if (currentPage > 0) { currentPage--; selected.clear(); refreshPage(); } };
   document.getElementById('btn-next').onclick = () => { if (currentPage < totalPages - 1) { currentPage++; selected.clear(); refreshPage(); } };
-  document.getElementById('btn-reroll').onclick = () => selected.size ? sendOp({ op: 'reroll', ids: Array.from(selected) }) : toast('Select glyph(s) first');
-  document.getElementById('btn-hide').onclick = () => { if (selected.size) { sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); } };
+  document.getElementById('btn-reroll').onclick = () => selected.size ? sendOp({ op: 'reroll', ids: Array.from(selected) }) : toast('请先点击或框选要修改的字');
+  document.getElementById('btn-hide').onclick = () => { if (selected.size) { sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); } else { toast('请先选中要隐藏的字'); } };
   document.getElementById('btn-tighten').onclick = () => sendOp({ action: 'tighten' });
-  document.getElementById('btn-drift').onclick = () => sendOp({ action: 'drift' });
+  document.getElementById('btn-drift').onclick = () => sendOp({ action: 'drift', force: true });
   document.getElementById('btn-inspect').onclick = (e) => { showOverlay = !showOverlay; e.target.classList.toggle('active', showOverlay); renderAnomalies(); };
-  document.getElementById('btn-undo').onclick = async () => { await api('/api/undo', 'POST', {}); await refreshPage(); };
-  document.getElementById('btn-reset').onclick = async () => { await api('/api/reset', 'POST', {}); selected.clear(); await refreshPage(); };
+  document.getElementById('btn-undo').onclick = async () => { await api('/api/undo', 'POST', {}); await refreshPage(); toast('已撤销上一步'); };
+  document.getElementById('btn-reset').onclick = async () => { await api('/api/reset', 'POST', {}); selected.clear(); await refreshPage(); toast('已还原全部修改'); };
   document.querySelectorAll('.swatch').forEach(btn => {
-    btn.onclick = () => selected.size ? sendOp({ op: 'pen', ids: Array.from(selected), color: btn.dataset.color }) : toast('Select glyph(s) or double-click a line first');
+    btn.onclick = () => selected.size ? sendOp({ op: 'pen', ids: Array.from(selected), color: btn.dataset.color }) : toast('请先选中单字或双击选中整行');
   });
+  function triggerDownloads(urls) {
+    (urls || []).forEach((u, idx) => {
+      setTimeout(() => { const a = document.createElement('a'); a.href = u; a.download = ''; a.click(); }, idx * 180);
+    });
+  }
   document.getElementById('btn-export-pdf').onclick = async () => {
     const res = await api('/api/export', 'POST', { format: 'pdf' });
-    toast(`Exported PDF in ${res.elapsed_ms} ms -> ${res.outputs[0]}`);
+    if (res.download_urls && res.download_urls.length) triggerDownloads(res.download_urls);
+    toast(`已导出并开始下载 PDF（${res.elapsed_ms} ms）`);
   };
   document.getElementById('btn-export-png').onclick = async () => {
     const res = await api('/api/export', 'POST', { format: 'png', transparent: true });
-    toast(`Exported transparent PNG in ${res.elapsed_ms} ms`);
+    if (res.download_urls && res.download_urls.length) triggerDownloads(res.download_urls);
+    toast(`已导出 ${(res.download_urls || []).length} 页透明 PNG（${res.elapsed_ms} ms）`);
   };
 
   document.getElementById('btn-inspect').classList.add('active');

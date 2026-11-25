@@ -222,7 +222,7 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
         new_edits, _ = undo_last_batch(edits)
     elif action == "reset":
         new_edits = []
-    elif action == "repen":
+    elif action == "repen" or action == "refresh":
         new_edits = edits
     elif action == "op":
         op = make_atomic_ops(
@@ -307,10 +307,14 @@ def api_harvest(st: StudioState, p: dict) -> dict:
     hdir.mkdir(parents=True, exist_ok=True)
     filled = hdir / "filled.pdf"
     filled.write_bytes(_b64_bytes(p["pdf_b64"]))
-    pid = re.sub(r"[^A-Za-z0-9_-]", "_", (p.get("id") or "my_hand").strip()) or "my_hand"
+    merge = (p.get("merge_into") or "").strip() or None
+    merge_pack = load_pack(merge) if merge else None
+    merge_path = merge_pack.source_path if merge_pack else None
+    raw_id = (p.get("id") or "").strip()
+    if not raw_id and merge_pack and _is_local_pack(merge_pack.source_path):
+        raw_id = merge_pack.id
+    pid = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id or "my_hand") or "my_hand"
     out = LOCAL_PACKS_DIR / f"{pid}.hwpack"
-    merge = p.get("merge_into") or None
-    merge_path = load_pack(merge).source_path if merge else None
     res = harvest_template_pdf(filled, out, pack_id=pid, merge_into=merge_path)
     return {"ok": True, "result": res}
 
