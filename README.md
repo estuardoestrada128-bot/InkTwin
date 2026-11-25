@@ -72,7 +72,7 @@ pip install -e .
 inktwin doctor
 ```
 
-看到 `ok=True` 后，直接启动本地工作台最省心：
+看到 `ok=True` 后，直接启动本地工作台最省心（Windows 用户也可以直接**双击项目根目录的 [`start_studio.bat`](start_studio.bat)** 启动，使用期间保持弹出的黑框最小化不关即可）：
 
 ```bash
 inktwin studio

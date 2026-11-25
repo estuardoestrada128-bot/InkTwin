@@ -300,7 +300,15 @@ function toast(msg, err = false) {
 }
 
 async function api(path, body) {
-  const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  if (location.protocol === 'file:') {
+    throw new Error('不能直接双击打开 studio.html，请双击项目根目录的 start_studio.bat（或在终端运行 inktwin studio）启动。');
+  }
+  let r;
+  try {
+    r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) {
+    throw new Error('无法连接本地后端（请确认 InkTwin Studio 启动窗口没有被关闭；若已关闭请重新双击 start_studio.bat）');
+  }
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || 'request failed');
   return j;

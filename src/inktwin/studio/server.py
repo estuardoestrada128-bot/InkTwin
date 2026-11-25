@@ -73,8 +73,11 @@ def _run_cli(argv: List[str]) -> Tuple[int, Optional[dict], str]:
 
     buf = io.StringIO()
     err = io.StringIO()
-    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
-        rc = int(cli_main(argv))
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(err):
+            rc = int(cli_main(argv))
+    except SystemExit as se:
+        rc = int(se.code) if isinstance(se.code, int) else 1
     out = buf.getvalue()
     return rc, _parse_json_tail(out), out + err.getvalue()
 
@@ -592,8 +595,33 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
     return server, actual, f"http://127.0.0.1:{actual}/", st
 
 
+def _check_existing_studio(port: int) -> bool:
+    if not port:
+        return False
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=1.2) as resp:
+            if resp.status == 200:
+                data = json.loads(resp.read().decode("utf-8"))
+                return bool(data.get("ok") and "packs" in data)
+    except Exception:
+        return False
+    return False
+
+
 def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bool = True) -> None:
-    server, actual, url, st = start_studio_server(workdir, port)
+    if port and _check_existing_studio(port):
+        url = f"http://127.0.0.1:{port}/"
+        print(json.dumps({"ok": True, "url": url, "port": port, "reused": True}, ensure_ascii=False))
+        if open_browser:
+            webbrowser.open(url)
+        return
+    try:
+        server, actual, url, st = start_studio_server(workdir, port)
+    except OSError:
+        # Fallback to any available ephemeral port if requested port is occupied by another app
+        server, actual, url, st = start_studio_server(workdir, 0)
     print(json.dumps({"ok": True, "url": url, "port": actual, "workdir": str(st.workdir)}, ensure_ascii=False))
     if open_browser:
         webbrowser.open(url)
