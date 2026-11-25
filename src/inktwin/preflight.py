@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -112,6 +113,15 @@ def run_preflight(
     real_sym = [ch for ch in non_cjk if ch in pack.glyphs]
 
     coverage = round(len(real_cjk) / len(cjk_seen), 3) if cjk_seen else 1.0
+    char_counts = Counter(
+        ch for ch in md_text
+        if not ch.isspace() and ch not in ("$", "#", "*", "`", "\\", "_", "^")
+    )
+    high_freq_single = [
+        {"char": ch, "count": cnt, "cat": pack.glyphs[ch].get("cat", "unknown")}
+        for ch, cnt in char_counts.most_common()
+        if cnt >= 2 and ch in pack.glyphs and len(pack.glyphs[ch].get("v", [])) == 1
+    ]
     return {
         "input": str(md_path),
         "pack": pack.id,
@@ -129,5 +139,6 @@ def run_preflight(
             "real_coverage_ratio": coverage,
         },
         "symbols_matched": len(real_sym),
+        "high_freq_single_variants": high_freq_single[:40],
         "formula_splits": all_splits,
     }

@@ -186,6 +186,42 @@ def run_phase5_tests() -> None:
                 )
                 assert del_res["ok"] and del_res["total_variants"] == before_v - 1
                 assert del_res["deleted"]["remaining"] == len(target_item["variants"]) - 1
+
+                # Trim one non-exempt single glyph down to 1 variant to test high_freq_single_variants & elastic toggle
+                test_item = next(
+                    it for it in insp_loc["items"]
+                    if len(it["char"]) == 1 and it["char"].isalpha() and len(it["variants"]) >= 1
+                )
+                test_ch = test_item["char"]
+                rem = len(test_item["variants"]) - (1 if test_item["char"] == target_item["char"] else 0)
+                while rem > 1:
+                    d2 = _http_post_json(base_url + "api/pack/delete-variant", {"pack": clone_id, "char": test_ch, "vidx": 0})
+                    rem = d2["deleted"]["remaining"]
+
+                pf_hfs = _http_post_json(
+                    base_url + "api/preflight",
+                    {"markdown": f"{test_ch} {test_ch} {test_ch}", "pack": clone_id},
+                )
+                hfs_map = {x["char"]: x["count"] for x in pf_hfs["report"].get("high_freq_single_variants", [])}
+                assert hfs_map.get(test_ch) == 3, f"Expected {test_ch} in high_freq_single_variants: {hfs_map}"
+
+                rn_el = _http_post_json(
+                    base_url + "api/render",
+                    {"markdown": f"## 1.\n{test_ch} {test_ch} {test_ch}", "pack": clone_id, "seed": 77, "elastic": True},
+                )
+                assert rn_el["ok"]
+                sc_el, _, _ = load_inkscene(st.current["scene"])
+                el_paths = [g["paths"][0]["d"] for g in sc_el["glyphs"] if g.get("ch") == test_ch and g.get("paths")]
+                assert len(el_paths) == 3 and len(set(el_paths)) == 3, f"Expected elastic micro-variation across repeats: {len(set(el_paths))}"
+
+                rn_noel = _http_post_json(
+                    base_url + "api/render",
+                    {"markdown": f"## 1.\n{test_ch} {test_ch} {test_ch}", "pack": clone_id, "seed": 77, "elastic": False},
+                )
+                assert rn_noel["ok"]
+                sc_noel, _, _ = load_inkscene(st.current["scene"])
+                noel_paths = [g["paths"][0]["d"] for g in sc_noel["glyphs"] if g.get("ch") == test_ch and g.get("paths")]
+                assert len(noel_paths) == 3 and len(set(noel_paths)) == 1, f"Expected identical paths when elastic=False: {len(set(noel_paths))}"
             finally:
                 if clone_path and clone_path.exists():
                     clone_path.unlink()

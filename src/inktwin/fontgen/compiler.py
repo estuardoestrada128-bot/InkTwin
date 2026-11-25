@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from pathlib import Path
@@ -210,12 +211,54 @@ def _glyph_name_for_char(ch: str) -> str:
     return f"u{cp:04X}" if cp <= 0xFFFF else f"u{cp:05X}"
 
 
+_AUGMENT_EXEMPT_CATS = frozenset({"delim", "op_eq", "op_minus", "dot", "dots_h", "accent_bar", "accent_hat"})
+
+
+def _elastic_deform_loops(
+    loops: List[List[Tuple[float, float]]],
+    vw: float,
+    vh: float,
+    variant_idx: int,
+    seed_key: str,
+    amp: float = 0.022,
+) -> List[List[Tuple[float, float]]]:
+    """Synthesize a gentle deterministic elastic variant of flattened SVG loops without mutating source ink."""
+    if not loops or vw <= 1.0 or vh <= 1.0:
+        return loops
+    digest = hashlib.sha256(f"{seed_key}#{variant_idx}".encode("utf-8")).digest()
+
+    def _u(k: int) -> float:
+        raw = int.from_bytes(digest[k * 2 : k * 2 + 2], "little") / 65535.0
+        return (raw - 0.5) * 2.0
+
+    dx00, dy00 = _u(0) * amp, _u(1) * amp
+    dx10, dy10 = _u(2) * amp, _u(3) * amp
+    dx01, dy01 = _u(4) * amp, _u(5) * amp
+    dx11, dy11 = _u(6) * amp, _u(7) * amp
+    bx, by = _u(8) * amp * 0.65, _u(9) * amp * 0.65
+
+    out: List[List[Tuple[float, float]]] = []
+    for lp in loops:
+        nlp: List[Tuple[float, float]] = []
+        for x, y in lp:
+            u = max(0.0, min(1.0, x / vw))
+            v = max(0.0, min(1.0, y / vh))
+            sx = (1.0 - u) * (1.0 - v) * dx00 + u * (1.0 - v) * dx10 + (1.0 - u) * v * dx01 + u * v * dx11
+            sy = (1.0 - u) * (1.0 - v) * dy00 + u * (1.0 - v) * dy10 + (1.0 - u) * v * dy01 + u * v * dy11
+            sx += math.sin(math.pi * v) * bx
+            sy += math.sin(math.pi * u) * by
+            nlp.append((x + sx * vw, y + sy * vh))
+        out.append(nlp)
+    return out
+
+
 def build_opentype_font(
     pack_or_path: Optional[HwPack | str | Path],
     out_path: Path,
     fmt: str = "ttf",
     family_name: Optional[str] = None,
     max_variants: int = 3,
+    augment_variants: bool = True,
 ) -> dict:
     """Compile a calibrated .hwpack into a standard .ttf or .otf font with GSUB calt alternates."""
     pack = pack_or_path if isinstance(pack_or_path, HwPack) else load_pack(str(pack_or_path) if pack_or_path else None)
@@ -261,11 +304,14 @@ def build_opentype_font(
         glyf_data[".notdef"] = p_nd.glyph()
     _compile_empty("space", 320)
 
-    def _add_variant_glyph(gname: str, vdict: dict, cat: str) -> bool:
-        loops = _parse_svg_loops(vdict.get("d", ""))
-        contours, adv_w = _normalize_contours_for_font(
-            loops, float(vdict.get("w", 70.0)), float(vdict.get("h", 100.0)), cat, is_cff=is_cff
-        )
+    def _add_loops_glyph(
+        gname: str,
+        loops: List[List[Tuple[float, float]]],
+        vw: float,
+        vh: float,
+        cat: str,
+    ) -> bool:
+        contours, adv_w = _normalize_contours_for_font(loops, vw, vh, cat, is_cff=is_cff)
         if not contours:
             return False
         if is_cff:
@@ -281,7 +327,12 @@ def build_opentype_font(
         glyph_order.append(gname)
         return True
 
+    def _add_variant_glyph(gname: str, vdict: dict, cat: str) -> bool:
+        loops = _parse_svg_loops(vdict.get("d", ""))
+        return _add_loops_glyph(gname, loops, float(vdict.get("w", 70.0)), float(vdict.get("h", 100.0)), cat)
+
     compiled_chars = 0
+    augmented_count = 0
     for ch, entry in sorted(pack.glyphs.items(), key=lambda kv: ord(kv[0][0]) if len(kv[0]) == 1 else 999999):
         if len(ch) != 1:
             continue
@@ -290,22 +341,46 @@ def build_opentype_font(
             continue
         cat = entry.get("cat", "cap")
         gbase = _glyph_name_for_char(ch)
-        if not _add_variant_glyph(gbase, variants[0], cat):
+        v0 = variants[0]
+        loops0 = _parse_svg_loops(v0.get("d", ""))
+        vw0, vh0 = float(v0.get("w", 70.0)), float(v0.get("h", 100.0))
+        if not _add_loops_glyph(gbase, loops0, vw0, vh0, cat):
             continue
         cmap[ord(ch)] = gbase
         compiled_chars += 1
 
+        can_aug = augment_variants and max_variants >= 2 and cat not in _AUGMENT_EXEMPT_CATS
+        g1 = f"{gbase}.alt1"
+        has_g1 = False
         if len(variants) >= 2:
-            g1 = f"{gbase}.alt1"
-            if _add_variant_glyph(g1, variants[1], cat):
-                base_2.append(gbase)
-                alt1_2.append(g1)
+            has_g1 = _add_variant_glyph(g1, variants[1], cat)
+        elif can_aug:
+            aug1 = _elastic_deform_loops(loops0, vw0, vh0, 1, ch)
+            has_g1 = _add_loops_glyph(g1, aug1, vw0, vh0, cat)
+            if has_g1:
+                augmented_count += 1
+
+        if has_g1:
+            base_2.append(gbase)
+            alt1_2.append(g1)
+            if max_variants >= 3:
+                g2 = f"{gbase}.alt2"
+                has_g2 = False
                 if len(variants) >= 3:
-                    g2 = f"{gbase}.alt2"
-                    if _add_variant_glyph(g2, variants[2], cat):
-                        base_3.append(gbase)
-                        alt1_3.append(g1)
-                        alt2_3.append(g2)
+                    has_g2 = _add_variant_glyph(g2, variants[2], cat)
+                elif can_aug:
+                    src_v = variants[1] if len(variants) >= 2 else v0
+                    src_loops = _parse_svg_loops(src_v.get("d", "")) or loops0
+                    sw = float(src_v.get("w", vw0))
+                    sh = float(src_v.get("h", vh0))
+                    aug2 = _elastic_deform_loops(src_loops, sw, sh, 2, ch)
+                    has_g2 = _add_loops_glyph(g2, aug2, sw, sh, cat)
+                    if has_g2:
+                        augmented_count += 1
+                if has_g2:
+                    base_3.append(gbase)
+                    alt1_3.append(g1)
+                    alt2_3.append(g2)
 
     fb = FontBuilder(UPM, isTTF=(not is_cff))
     fb.setupGlyphOrder(glyph_order)
@@ -371,5 +446,6 @@ def build_opentype_font(
         "mapped_chars": compiled_chars,
         "calt_alt1_pairs": len(base_2),
         "calt_alt2_triples": len(base_3),
+        "augmented_variants": augmented_count,
     }
 

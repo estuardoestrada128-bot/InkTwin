@@ -99,6 +99,9 @@ def _cmd_preflight(args: argparse.Namespace) -> int:
         cjk = report["cjk"]
         print(f"[Preflight] pack={report['pack']} | mode={report['mode']} | paper={report['paper']} ({report['usable_width_mm']}mm)")
         print(f"  CJK: {cjk['real_in_pack']}/{cjk['total_unique']} real ({cjk['real_coverage_ratio']*100:.1f}%), {cjk['synthesized_unseen']} unseen: {''.join(cjk['unseen_chars'])}")
+        hfs = report.get("high_freq_single_variants") or []
+        if hfs:
+            print(f"  High-freq 1-variant ({len(hfs)}): {' '.join(x['char'] + '×' + str(x['count']) for x in hfs[:15])}")
         print(f"  Formula splits: {len(report['formula_splits'])}")
     return 0
 
@@ -209,6 +212,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
         standalone_tag=args.tag,
         quirks=quirks,
         slant_add=float(mood_cfg.get("slant_add", 0.0)),
+        elastic_amp=(0.0 if args.no_elastic else float(mood_cfg.get("elastic_amp", 0.026))),
         capture_scene=need_scene,
         pack=pack if use_pg else None,
         layout_spec=layout_spec,
@@ -315,6 +319,7 @@ def _add_render_flags(p: argparse.ArgumentParser) -> None:
     p.add_argument("--text-jitter", type=float, default=None)
     p.add_argument("--wobble", type=float, default=None)
     p.add_argument("--no-quirks", action="store_true")
+    p.add_argument("--no-elastic", action="store_true", help="Disable adaptive vector elastic micro-variation on repeated glyphs")
     p.add_argument("--no-personal", action="store_true")
     p.add_argument("--no-personal-cjk", action="store_true")
     p.add_argument("--personal-cjk", action="store_true")
@@ -477,13 +482,14 @@ def _cmd_fontbuild(args: argparse.Namespace) -> int:
     pk = load_pack(args.pack)
     ext = args.format.lower().lstrip(".")
     out_p = Path(args.output or f"InkTwin-{pk.id}.{ext}")
-    res = build_opentype_font(pk, out_p, fmt=ext, family_name=args.name)
+    res = build_opentype_font(pk, out_p, fmt=ext, family_name=args.name, augment_variants=(not args.no_augment))
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=2))
     else:
         print(
             f"[FontBuild] {res['family']} ({res['format'].upper()}) | "
-            f"chars={res['mapped_chars']} | calt_alt1={res['calt_alt1_pairs']} alt2={res['calt_alt2_triples']} -> {res['font']}"
+            f"chars={res['mapped_chars']} | calt_alt1={res['calt_alt1_pairs']} alt2={res['calt_alt2_triples']} "
+            f"(aug={res.get('augmented_variants', 0)}) -> {res['font']}"
         )
     return 0
 
@@ -609,6 +615,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_fb.add_argument("--format", choices=["ttf", "otf"], default="ttf")
     p_fb.add_argument("--name", default=None, help="Custom font family name")
     p_fb.add_argument("-o", "--output", default=None)
+    p_fb.add_argument("--no-augment", action="store_true", help="Disable auto-synthesizing .alt1/.alt2 calt variants for 1-2 variant glyphs")
     p_fb.add_argument("--json", action="store_true")
     p_fb.set_defaults(func=_cmd_fontbuild)
 

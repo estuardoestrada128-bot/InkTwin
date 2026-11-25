@@ -9,6 +9,7 @@
   const CN_MR = CFG.cnMr;
   const USE_PERSONAL_CJK = CFG.usePersonalCjk;
   const QUIRKS_ENABLED = CFG.quirksEnabled;
+  const ELASTIC_AMP = (CFG.elasticAmp !== undefined) ? Number(CFG.elasticAmp) : 0.026;
   const LAYOUT_MODE = CFG.layoutMode;
   const PERSONAL_URL = CFG.personalUrl;
   const SYNTH_CJK = CFG.synthCjk;
@@ -47,6 +48,7 @@
     }
   }
   const lastPick = Object.create(null);
+  const seenCount = Object.create(null);
 
   function pickVariant(ch) {
     if (!PG || !PG[ch]) return null;
@@ -59,7 +61,69 @@
       idx = (idx + 1 + Math.floor(rand() * (arr.length - 1))) % arr.length;
     }
     lastPick[ch] = idx;
-    return { cat: entry.cat, v: arr[idx], vidx: idx };
+    return { cat: entry.cat, v: arr[idx], vidx: idx, nVars: arr.length };
+  }
+
+  const ELASTIC_EXEMPT_CATS = new Set(['delim', 'op_eq', 'op_minus', 'dot', 'dots_h', 'accent_bar', 'accent_hat']);
+  const ELASTIC_EXEMPT_CHARS = new Set(['=', '+', '-', '−', '×', '÷', '±', '|', '∣', '∥', '‖', '(', ')', '[', ']', '{', '}', '/', '.', ',', ':', ';', '·', '…']);
+
+  function makeElasticField(amp) {
+    const a = Math.min(0.038, Math.max(0.0, amp));
+    return {
+      dx00: randSym(a), dy00: randSym(a),
+      dx10: randSym(a), dy10: randSym(a),
+      dx01: randSym(a), dy01: randSym(a),
+      dx11: randSym(a), dy11: randSym(a),
+      bx: randSym(a * 0.65),
+      by: randSym(a * 0.65),
+    };
+  }
+
+  function deformPathD(dStr, w, h, f) {
+    if (!dStr || w <= 1 || h <= 1) return dStr;
+    const tokens = dStr.match(/[MLQCZmlqcz]|-?\d*\.?\d+(?:e[+-]?\d+)?/gi);
+    if (!tokens) return dStr;
+    for (let i = 0; i < tokens.length; i++) {
+      const tk = tokens[i];
+      if (/^[A-Za-z]$/.test(tk) && !'MLQCZ'.includes(tk)) return dStr;
+    }
+    const out = [];
+    let idx = 0;
+    let cmd = '';
+    function tx(x, y) {
+      const u = Math.max(0, Math.min(1, x / w));
+      const v = Math.max(0, Math.min(1, y / h));
+      const s = (1 - u) * (1 - v) * f.dx00 + u * (1 - v) * f.dx10 + (1 - u) * v * f.dx01 + u * v * f.dx11;
+      const bow = Math.sin(Math.PI * v) * f.bx;
+      return +(x + (s + bow) * w).toFixed(2);
+    }
+    function ty(x, y) {
+      const u = Math.max(0, Math.min(1, x / w));
+      const v = Math.max(0, Math.min(1, y / h));
+      const s = (1 - u) * (1 - v) * f.dy00 + u * (1 - v) * f.dy10 + (1 - u) * v * f.dy01 + u * v * f.dy11;
+      const bow = Math.sin(Math.PI * u) * f.by;
+      return +(y + (s + bow) * h).toFixed(2);
+    }
+    while (idx < tokens.length) {
+      const tk = tokens[idx];
+      if (/^[MLQCZ]$/.test(tk)) {
+        cmd = tk;
+        out.push(cmd);
+        idx++;
+        continue;
+      }
+      const nPairs = cmd === 'Q' ? 2 : (cmd === 'C' ? 3 : 1);
+      if (idx + nPairs * 2 > tokens.length) return dStr;
+      for (let p = 0; p < nPairs; p++) {
+        const px = parseFloat(tokens[idx + p * 2]);
+        const py = parseFloat(tokens[idx + p * 2 + 1]);
+        if (!Number.isFinite(px) || !Number.isFinite(py)) return dStr;
+        out.push(tx(px, py), ty(px, py));
+      }
+      idx += nPairs * 2;
+      if (cmd === 'M') cmd = 'L';
+    }
+    return out.join(' ');
   }
 
   // v11 清瘦 StarNote 笔锋校准：仅对真正偏细的小笔迹微补（~0.74px），绝不把整页强行加粗！
@@ -182,18 +246,29 @@
       ? Math.min(1.82, effFontPx * 0.056)
       : (isCjk ? 0.76 : (effFontPx < 13.0 ? 0.64 : TARGET_STROKE_PX));
 
+    const occ = (seenCount[ch] || 0);
+    seenCount[ch] = occ + 1;
+    const nVars = Math.max(1, info.nVars || 1);
+    let effElasticAmp = 0;
+    if (ELASTIC_AMP > 0 && !ELASTIC_EXEMPT_CATS.has(cat) && !ELASTIC_EXEMPT_CHARS.has(ch) && !isDelimBar && !isOp) {
+      const varWeight = nVars === 1 ? 1.0 : (nVars === 2 ? 0.65 : (nVars === 3 ? 0.35 : 0.12));
+      const occWeight = (occ === 0) ? 0.45 : 1.0;
+      effElasticAmp = ELASTIC_AMP * varWeight * occWeight;
+    }
+    const elasticField = effElasticAmp > 0.002 ? makeElasticField(effElasticAmp) : null;
+
     // 如有克隆自 Andy 真迹的真实偏旁部首多边形（v7 偏旁克隆），先以实心细笔绘制
     if (v.d_fill) {
       const radFill = document.createElementNS(SVG_NS, 'path');
       radFill.setAttribute('class', 'pg-rad-fill');
-      radFill.setAttribute('d', v.d_fill);
+      radFill.setAttribute('d', elasticField ? deformPathD(v.d_fill, v.w, v.h, elasticField) : v.d_fill);
       svg.appendChild(radFill);
     }
 
     // 如有顺势轻牵丝路径（连笔合成汉字），以轻盈半悬空笔压绘制
     if (v.d_hair) {
       const hair = document.createElementNS(SVG_NS, 'path');
-      hair.setAttribute('d', v.d_hair);
+      hair.setAttribute('d', elasticField ? deformPathD(v.d_hair, v.w, v.h, elasticField) : v.d_hair);
       hair.setAttribute('fill', 'none');
       hair.setAttribute('stroke', 'currentColor');
       hair.setAttribute('vector-effect', 'non-scaling-stroke');
@@ -207,7 +282,7 @@
 
     if (v.d) {
       const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', v.d);
+      path.setAttribute('d', elasticField ? deformPathD(v.d, v.w, v.h, elasticField) : v.d);
       applyUniformInkCompensation(svg, path, v, hPx, targetPx, isCjk);
       svg.appendChild(path);
     }

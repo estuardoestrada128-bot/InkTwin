@@ -179,6 +179,9 @@
         </div>
         <label>字体名称（可选）</label>
         <input id="fb-name" type="text" placeholder="InkTwin-My-Hand" />
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;font-size:12px" title="单变体字符自动通过低频真迹弹性微形变补齐 3 个 calt 上下文轮换变体">
+          <input id="fb-aug" type="checkbox" checked style="width:auto" /> 自动微变体补全（单变体补满 3 变体 calt）
+        </label>
         <div class="actions"><button class="btn primary" id="btn-fb">编译字体</button></div>
         <div id="fb-out" class="files"></div>
         <div id="fb-pv" class="font-pv" hidden>
@@ -262,6 +265,9 @@
             <div><label title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机">随机种子（可选）</label><input id="opt-seed" type="number" placeholder="留空随机" title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机" /></div>
             <div><label>页眉标签（可选）</label><input id="opt-tag" type="text" placeholder="如 W10" /></div>
           </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;font-size:12px" title="同字多次出现时施加低频真迹弹性微形变，消除像盖章一样的重复感，零失真不改原字库">
+            <input id="opt-elastic" type="checkbox" checked style="width:auto" /> 自适应弹性微变化（同字多次防呆板）
+          </label>
           <div id="ov-paper-note" class="sub-lbl" hidden style="color:var(--accent);margin-top:8px">原卷叠写模式：底纸与纸型自动沿用原卷</div>
         </div>
         <div class="card">
@@ -684,10 +690,16 @@ $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
 });
 
 $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
-  const j = await api('/api/fontbuild', { pack: $('#fb-pack').value, format: $('#fb-fmt').value, name: $('#fb-name').value.trim() });
+  const j = await api('/api/fontbuild', {
+    pack: $('#fb-pack').value,
+    format: $('#fb-fmt').value,
+    name: $('#fb-name').value.trim(),
+    augment_variants: $('#fb-aug').checked,
+  });
   const r = j.result;
   const fname = `${r.family}.${r.format}`;
-  $('#fb-out').innerHTML = `<a href="${j.font_url}" download="${escHtml(fname)}">⬇ 下载 ${escHtml(fname)}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
+  const augNote = r.augmented_variants ? ` · 自动增补 ${r.augmented_variants}` : '';
+  $('#fb-out').innerHTML = `<a href="${j.font_url}" download="${escHtml(fname)}">⬇ 下载 ${escHtml(fname)}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}${augNote}）</a>`;
   const fam = `InkTwinPreview_${Date.now()}`;
   const ff = new FontFace(fam, `url(${j.font_url})`);
   try {
@@ -896,12 +908,13 @@ function renderOptions() {
     markdown: $('#md').value, pack: $('#opt-pack').value, paper: $('#opt-paper').value, page_size: $('#opt-size').value,
     ink: $('#opt-ink').value, pen_type: $('#opt-pen').value, mood: $('#opt-mood').value,
     font_size: parseFloat($('#opt-fs').value || '12'), seed: $('#opt-seed').value || null, tag: $('#opt-tag').value.trim(),
+    elastic: $('#opt-elastic').checked,
     overlay_pdf_b64: S.overlayB64, layout: S.layout,
   };
 }
 
 const DRAFT_KEY = 'inktwin_studio_draft_v1';
-const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-mood', 'opt-fs', 'opt-tag'];
+const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-mood', 'opt-fs', 'opt-tag', 'opt-elastic'];
 let draftTimer = null;
 
 function saveDraft() {
@@ -909,7 +922,10 @@ function saveDraft() {
   draftTimer = setTimeout(() => {
     try {
       const obj = { md: $('#md').value };
-      DRAFT_FIELDS.forEach(id => { const el = $('#' + id); if (el) obj[id] = el.value; });
+      DRAFT_FIELDS.forEach(id => {
+        const el = $('#' + id);
+        if (el) obj[id] = (el.type === 'checkbox') ? !!el.checked : el.value;
+      });
       localStorage.setItem(DRAFT_KEY, JSON.stringify(obj));
     } catch (_) {}
   }, 250);
@@ -925,7 +941,9 @@ function restoreDraft() {
       const el = $('#' + id);
       const val = obj[id];
       if (!el || val === undefined || val === '') return;
-      if (el.tagName === 'SELECT') {
+      if (el.type === 'checkbox') {
+        el.checked = !!val;
+      } else if (el.tagName === 'SELECT') {
         if (Array.from(el.options).some(o => o.value === val)) el.value = val;
       } else {
         el.value = val;
@@ -986,20 +1004,36 @@ $('#btn-preflight').onclick = (e) => busy(e.currentTarget, async () => {
     font_size: parseFloat($('#opt-fs').value || '12'),
   });
   const r = j.report, c = r.cjk;
+  const hfs = r.high_freq_single_variants || [];
+  const hfsText = hfs.length ? hfs.slice(0, 20).map(x => `${x.char}(×${x.count})`).join(' ') : '无';
   const o = $('#pf-out'); o.hidden = false;
-  o.textContent = `真迹汉字覆盖：${c.real_in_pack}/${c.total_unique}（${(c.real_coverage_ratio * 100).toFixed(1)}%）\n合成兜底生字（${c.synthesized_unseen}）：${(c.unseen_chars || []).join('') || '无'}\n长公式断行：${(r.formula_splits || []).length} 处\n可用宽度：${r.usable_width_mm} mm`;
+  o.textContent = `真迹汉字覆盖：${c.real_in_pack}/${c.total_unique}（${(c.real_coverage_ratio * 100).toFixed(1)}%）\n合成兜底生字（${c.synthesized_unseen}）：${(c.unseen_chars || []).join('') || '无'}\n高频仅 1 变体字符（${hfs.length}）：${hfsText}\n长公式断行：${(r.formula_splits || []).length} 处\n可用宽度：${r.usable_width_mm} mm`;
   const act = $('#pf-act');
+  const btns = [];
   if (c.unseen_chars && c.unseen_chars.length) {
-    const chars = c.unseen_chars.slice(0, 72).join('');
-    $('#tpl-chars').value = chars;
+    btns.push(`<button class="btn" id="btn-pf-supp">→ 给这 ${c.unseen_chars.length} 个生字去生成补字帖</button>`);
+  }
+  if (hfs.length) {
+    btns.push(`<button class="btn" id="btn-pf-hfs">→ 给这 ${hfs.length} 个高频单变体字去补写真迹</button>`);
+  }
+  if (btns.length) {
+    const firstChars = (c.unseen_chars && c.unseen_chars.length ? c.unseen_chars : hfs.map(x => x.char)).slice(0, 72).join('');
+    $('#tpl-chars').value = firstChars;
     act.hidden = false;
-    act.innerHTML = `<button class="btn" id="btn-pf-supp">→ 给这 ${c.unseen_chars.length} 个生字去生成补字帖</button>`;
-    $('#btn-pf-supp').onclick = () => {
+    act.innerHTML = btns.join(' ');
+    const jumpForge = (charList, msg) => {
+      $('#tpl-chars').value = charList.slice(0, 72).join('');
       $('#vi-pack').value = $('#opt-pack').value;
       switchTab('forge');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      toast('已自动填入缺字，点击「生成并下载补字帖 PDF」即可');
+      toast(msg);
     };
+    if ($('#btn-pf-supp')) {
+      $('#btn-pf-supp').onclick = () => jumpForge(c.unseen_chars, '已自动填入缺字，点击「生成并下载补字帖 PDF」即可');
+    }
+    if ($('#btn-pf-hfs')) {
+      $('#btn-pf-hfs').onclick = () => jumpForge(hfs.map(x => x.char), '已填入高频单变体字符，建议多写 1~2 遍作为真迹变体');
+    }
   } else {
     act.hidden = true;
     act.innerHTML = '';

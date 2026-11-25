@@ -14,6 +14,7 @@ from fontTools.ttLib import TTFont
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
+from dataclasses import replace
 from inktwin.cli import main as cli_main
 from inktwin.fontgen import build_opentype_font
 from inktwin.harvest import generate_template_pdf, harvest_template_pdf, read_template_spec_from_pdf
@@ -164,6 +165,21 @@ def run_phase3_tests() -> None:
         cli_font = tmp / "cli_out.ttf"
         assert cli_main(["fontbuild", "--pack", str(demo_pack_path), "--format", "ttf", "-o", str(cli_font), "--json"]) == 0
         assert cli_font.exists()
+
+        # 6. Auto-augment single-variant glyphs into 3-variant calt alternates (opt-out via augment_variants=False)
+        demo_pk = load_pack(demo_pack_path)
+        a_entry = demo_pk.glyphs["A"]
+        single_pk = replace(
+            demo_pk,
+            id="single_var_test",
+            glyphs={"A": {"cat": a_entry.get("cat", "cap"), "v": list(a_entry["v"])[:1]}},
+        )
+        aug_ttf = tmp / "aug_on.ttf"
+        raw_ttf = tmp / "aug_off.ttf"
+        r_aug = build_opentype_font(single_pk, aug_ttf, fmt="ttf", augment_variants=True)
+        r_raw = build_opentype_font(single_pk, raw_ttf, fmt="ttf", augment_variants=False)
+        assert r_aug["augmented_variants"] == 2 and r_aug["calt_alt1_pairs"] == 1 and r_aug["calt_alt2_triples"] == 1
+        assert r_raw["augmented_variants"] == 0 and r_raw["calt_alt1_pairs"] == 0 and r_raw["calt_alt2_triples"] == 0
 
 
 if __name__ == "__main__":

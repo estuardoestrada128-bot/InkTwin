@@ -297,6 +297,8 @@ def api_render(st: StudioState, p: dict) -> dict:
     ]
     if p.get("tag"):
         argv += ["--tag", str(p["tag"])]
+    if p.get("elastic") is False:
+        argv.append("--no-elastic")
 
     if p.get("overlay_pdf_b64"):
         blank = rdir / "blank.pdf"
@@ -446,7 +448,9 @@ def api_fontbuild(st: StudioState, p: dict) -> dict:
     fmt = (p.get("format") or "ttf").lower()
     fdir = st.workdir / f"font_{st.next_id()}"
     out = fdir / f"InkTwin-{pk.id}.{fmt}"
-    res = build_opentype_font(pk, out, fmt=fmt, family_name=p.get("name") or None)
+    aug = p.get("augment_variants")
+    augment = True if aug is None else bool(aug)
+    res = build_opentype_font(pk, out, fmt=fmt, family_name=p.get("name") or None, augment_variants=augment)
     return {"ok": True, "result": res, "font_url": st.url_for(out)}
 
 

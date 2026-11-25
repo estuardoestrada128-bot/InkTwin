@@ -21,6 +21,7 @@ MOOD_PRESETS: Dict[str, dict] = {
         "connect_mul": 0.55,
         "slant_add": -1.5,
         "quirks": False,
+        "elastic_amp": 0.015,
     },
     "normal": {
         "math_jitter": 0.58,
@@ -29,6 +30,7 @@ MOOD_PRESETS: Dict[str, dict] = {
         "connect_mul": 1.00,
         "slant_add": 0.0,
         "quirks": True,
+        "elastic_amp": 0.026,
     },
     "rush": {
         "math_jitter": 0.88,
@@ -37,6 +39,7 @@ MOOD_PRESETS: Dict[str, dict] = {
         "connect_mul": 1.40,
         "slant_add": -3.5,
         "quirks": True,
+        "elastic_amp": 0.036,
     },
 }
 
