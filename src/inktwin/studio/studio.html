@@ -42,10 +42,21 @@
   .thumbs img { width: 140px; border: 1px solid var(--line); border-radius: 6px; cursor: zoom-in; }
   .pv-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .pv-bar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .zoom-lbl { min-width: 48px; text-align: center; font-size: 13px; cursor: pointer; padding: 3px 6px; border-radius: 6px; user-select: none; }
+  .zoom-lbl:hover { background: var(--accent-soft); color: var(--accent); }
   .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
   .pages { display: flex; flex-direction: column; gap: 14px; align-items: center; }
-  .pages img { width: 760px; max-width: none; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; }
+  .pages img { width: 760px; height: auto; max-width: none; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; }
+  .pages img.checker { background-color: #f8f9fb; }
   .checker { background-image: linear-gradient(45deg, #e2e5ec 25%, transparent 25%), linear-gradient(-45deg, #e2e5ec 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e5ec 75%), linear-gradient(-45deg, transparent 75%, #e2e5ec 75%); background-size: 14px 14px; background-position: 0 0, 0 7px, 7px -7px, -7px 0; background-color: #f8f9fb; }
+  .seg-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .seg { flex: 1; min-width: 72px; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: 13px; text-align: center; transition: all .12s; }
+  .seg:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .seg.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; box-shadow: 0 1px 6px rgba(47,91,211,.28); }
+  .seg:disabled { opacity: .45; cursor: not-allowed; }
+  .dl-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .dl-chip { display: inline-block; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; text-decoration: none; }
+  .dl-chip:hover { filter: brightness(.95); }
   .exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 8px; margin-top: 10px; }
   .exp-card { border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: #fff; text-align: center; }
   .exp-card .thumb { width: 100%; height: 140px; object-fit: contain; border-radius: 5px; border: 1px solid var(--line); cursor: zoom-in; display: block; margin-bottom: 5px; }
@@ -60,7 +71,7 @@
   .modal-bar .btn { background: #2d3447; color: #fff; border-color: #414b63; padding: 5px 11px; font-size: 12.5px; }
   .modal-bar .btn.primary { background: var(--accent); border-color: var(--accent); }
   .modal-body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-  .modal-body img { width: 780px; max-width: none; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; }
+  .modal-body img { width: 780px; height: auto; max-width: none; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; }
   .modal-body img.checker { background-color: #f8f9fb; }
   .modal-body iframe { width: min(980px, 92vw); height: calc(100vh - 96px); border: 0; border-radius: 6px; background: #fff; }
   .lay-pages { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -259,11 +270,12 @@
     <div class="grid" style="grid-template-columns: minmax(420px, 2fr) minmax(300px, 1fr);">
       <div class="card">
         <div class="pv-bar">
-          <button class="btn" id="btn-pv-zout" title="缩小 PDF 预览">−</button>
-          <span id="pv-zoom-lbl" style="min-width:44px;text-align:center;font-size:13px">100%</span>
-          <button class="btn" id="btn-pv-zin" title="放大 PDF 预览">+</button>
+          <button class="btn" id="btn-pv-zout" title="缩小预览">−</button>
+          <span id="pv-zoom-lbl" class="zoom-lbl" title="点击重置为 100%">100%</span>
+          <button class="btn" id="btn-pv-zin" title="放大预览">+</button>
           <button class="btn" id="btn-pv-zfit">适应宽度</button>
-          <span class="hint">在预览区按住 <b>Ctrl + 滚轮</b> 可单独缩放 PDF（不会缩放整个网页）</span>
+          <span id="pv-mode-pill" class="pill">完整 PDF · 矢量高清</span>
+          <span class="hint">预览区按住 <b>Ctrl + 滚轮</b> 可单独缩放</span>
         </div>
         <div id="pages-vp" class="pages-vp">
           <div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div>
@@ -276,25 +288,32 @@
           <div class="actions">
             <button class="btn need-render" data-op="tighten" disabled title="自动收拢异常偏大的字间距">收拢空隙</button>
             <button class="btn need-render" data-op="drift" disabled title="为过齐的左边缘增加自然手写起伏">自然右漂</button>
-            <button class="btn need-render" data-op="undo" disabled>撤销</button>
-            <button class="btn need-render" data-op="reset" disabled>还原</button>
+            <button class="btn need-render" id="btn-op-undo" data-op="undo" disabled>撤销</button>
+            <button class="btn need-render" id="btn-op-reset" data-op="reset" disabled>还原</button>
             <button class="btn need-render" data-op="refresh" disabled title="如果你刚在逐字编辑器里修改过，点此同步刷新预览">刷新预览</button>
           </div>
-          <label>切换笔触材质后重绘</label>
-          <div class="row">
-            <select id="pv-pen"><option value="gel">中性笔 gel</option><option value="ballpoint">圆珠笔</option><option value="fountain">钢笔</option><option value="pencil">铅笔</option></select>
-            <button class="btn need-render" id="btn-repen" disabled>重绘</button>
+          <label>切换笔触材质（点击即重绘当前预览）</label>
+          <div class="seg-group" id="pv-pen-group">
+            <button class="seg need-render active" data-pen="gel" disabled>中性笔</button>
+            <button class="seg need-render" data-pen="ballpoint" disabled>圆珠笔</button>
+            <button class="seg need-render" data-pen="fountain" disabled>钢笔</button>
+            <button class="seg need-render" data-pen="pencil" disabled>铅笔</button>
           </div>
         </div>
         <div class="card">
-          <h2>导出与逐字编辑</h2>
+          <h2>切换预览格式 &amp; 导出</h2>
+          <label style="margin-top:0">点击下方格式可直接切换左侧大图预览，蓝色为当前选中</label>
+          <div class="seg-group" id="pv-fmt-group">
+            <button class="seg need-render active" data-fmt="pdf" disabled>完整 PDF</button>
+            <button class="seg need-render" data-fmt="svg" disabled>透明 SVG</button>
+            <button class="seg need-render" data-fmt="png" disabled>透明 PNG</button>
+          </div>
           <div class="actions">
-            <button class="btn primary need-render" data-export="pdf" disabled>下载 PDF</button>
-            <button class="btn need-render" data-export="svg" disabled>透明 SVG 图层</button>
-            <button class="btn need-render" data-export="png" disabled>透明 PNG 图层</button>
+            <button class="btn primary need-render" id="btn-dl-active" disabled>⬇ 下载 PDF</button>
+            <button class="btn need-render" id="btn-pv-pdf-modal" disabled title="用浏览器原生 PDF 阅读器弹窗查看">👁 原生 PDF</button>
             <button class="btn need-render" id="btn-editor" disabled>逐字微调编辑器 ↗</button>
           </div>
-          <div id="exp-out" class="files"></div>
+          <div id="exp-out" class="dl-chips"></div>
         </div>
       </div>
     </div>
@@ -305,7 +324,7 @@
   <div class="modal-bar">
     <b id="pm-title">预览</b>
     <button class="btn" id="pm-zout">−</button>
-    <span id="pm-zlbl" style="min-width:44px;text-align:center;font-size:12.5px">100%</span>
+    <span id="pm-zlbl" class="zoom-lbl" style="color:#fff" title="点击重置为 100%">100%</span>
     <button class="btn" id="pm-zin">+</button>
     <a class="btn primary" id="pm-dl" href="#" download style="display:none">⬇ 下载</a>
     <button class="btn" id="pm-close">关闭 (Esc)</button>
@@ -316,7 +335,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0, lastPdfUrl: null };
+const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0, lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0, exportCache: {} };
 
 const SAMPLE_MD = `---
 title: 微积分作业 W3
@@ -427,7 +446,7 @@ $('#hv-merge').onchange = () => {
 /* ---------------- Lightbox Preview Modal & Independent Zoom ---------------- */
 function applyModalZoom(z, anchorX = null, anchorY = null) {
   const body = $('#pm-body');
-  const clamped = Math.max(0.4, Math.min(3.5, Math.round(z * 100) / 100));
+  const clamped = Math.max(0.4, Math.min(4.0, Math.round(z * 100) / 100));
   const ratio = clamped / S.modalZoom;
   S.modalZoom = clamped;
   $('#pm-zlbl').textContent = Math.round(clamped * 100) + '%';
@@ -465,6 +484,7 @@ $('#pv-modal').onclick = (e) => { if (e.target === $('#pv-modal') || e.target ==
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#pv-modal').classList.remove('open'); });
 $('#pm-zin').onclick = () => applyModalZoom(S.modalZoom * 1.2);
 $('#pm-zout').onclick = () => applyModalZoom(S.modalZoom / 1.2);
+$('#pm-zlbl').onclick = () => applyModalZoom(1.0);
 $('#pm-body').addEventListener('wheel', (e) => {
   if ((e.ctrlKey || e.metaKey) && $$('#pm-body img').length) {
     e.preventDefault();
@@ -474,7 +494,7 @@ $('#pm-body').addEventListener('wheel', (e) => {
 
 function applyPreviewZoom(z, anchorX = null, anchorY = null) {
   const vp = $('#pages-vp');
-  const clamped = Math.max(0.4, Math.min(3.0, Math.round(z * 100) / 100));
+  const clamped = Math.max(0.4, Math.min(4.0, Math.round(z * 100) / 100));
   const ratio = clamped / S.previewZoom;
   S.previewZoom = clamped;
   $('#pv-zoom-lbl').textContent = Math.round(clamped * 100) + '%';
@@ -488,6 +508,7 @@ function applyPreviewZoom(z, anchorX = null, anchorY = null) {
 
 $('#btn-pv-zin').onclick = () => applyPreviewZoom(S.previewZoom * 1.2);
 $('#btn-pv-zout').onclick = () => applyPreviewZoom(S.previewZoom / 1.2);
+$('#pv-zoom-lbl').onclick = () => applyPreviewZoom(1.0);
 $('#btn-pv-zfit').onclick = () => {
   const avail = Math.max(320, $('#pages-vp').clientWidth - 40);
   applyPreviewZoom(avail / 760);
@@ -736,8 +757,7 @@ $('#btn-render').onclick = (e) => busy(e.currentTarget, async () => {
     S.overlayB64 = await fileToB64($('#ov-file').files[0]);
   }
   const j = await api('/api/render', renderOptions());
-  showSnapshot(j);
-  $('#pv-pen').value = $('#opt-pen').value;
+  await showSnapshot(j);
   switchTab('preview');
   toast('已生成：' + j.inspect.glyph_count + ' 个手写图元');
 });
@@ -821,11 +841,71 @@ function renderLayoutEditor() {
 }
 
 /* ---------------- Preview ---------------- */
-function showSnapshot(j) {
-  $$('.need-render').forEach(b => b.disabled = false);
-  S.lastPdfUrl = j.pdf_url;
+const FMT_LABELS = {
+  pdf: '完整 PDF · 矢量高清',
+  svg: '透明 SVG 图层 · 矢量无底纸',
+  png: '透明 PNG 图层 · 300 DPI 透明底',
+};
+
+function renderPreviewPages(urls, isTransparent = false) {
   const wPx = Math.round(760 * S.previewZoom);
-  $('#pages').innerHTML = j.previews.map((s, i) => `<img src="${s}" style="width:${wPx}px" alt="page ${i + 1}">`).join('');
+  const cls = isTransparent ? ' class="checker"' : '';
+  $('#pages').innerHTML = (urls || []).map((s, i) => `<img src="${s}"${cls} style="width:${wPx}px" alt="第 ${i + 1} 页">`).join('');
+}
+
+function updateFormatControls(files) {
+  const fmt = S.activeFmt;
+  $$('#pv-fmt-group button').forEach(b => b.classList.toggle('active', b.dataset.fmt === fmt));
+  $('#pv-mode-pill').textContent = FMT_LABELS[fmt] || fmt.toUpperCase();
+  const dlBtn = $('#btn-dl-active');
+  const modalBtn = $('#btn-pv-pdf-modal');
+  const chips = $('#exp-out');
+  if (fmt === 'pdf') {
+    dlBtn.textContent = '⬇ 下载 PDF';
+    modalBtn.style.display = '';
+    chips.innerHTML = '';
+  } else {
+    const cnt = (files || []).length;
+    dlBtn.textContent = cnt > 1 ? `⬇ 下载全部透明 ${fmt.toUpperCase()}（${cnt} 页）` : `⬇ 下载透明 ${fmt.toUpperCase()}`;
+    modalBtn.style.display = 'none';
+    chips.innerHTML = (files || []).map((f, idx) => {
+      const fn = f.split('/').pop();
+      return `<a class="dl-chip" href="${f}" download="${escHtml(fn)}">⬇ 第 ${idx + 1} 页 (${fmt.toUpperCase()})</a>`;
+    }).join('');
+  }
+}
+
+async function switchPreviewFormat(fmt) {
+  S.activeFmt = fmt;
+  if (fmt === 'pdf') {
+    renderPreviewPages(S.lastPdfPreviews, false);
+    updateFormatControls([S.lastPdfUrl]);
+    return;
+  }
+  const ver = S.snapVer;
+  if (!S.exportCache[fmt]) {
+    const j = await api('/api/scene/export', { format: fmt, transparent: true });
+    if (ver !== S.snapVer) return;
+    S.exportCache[fmt] = j.files || [];
+  }
+  renderPreviewPages(S.exportCache[fmt], true);
+  updateFormatControls(S.exportCache[fmt]);
+}
+
+async function showSnapshot(j) {
+  $$('.need-render').forEach(b => b.disabled = false);
+  S.snapVer += 1;
+  S.exportCache = {};
+  S.lastPdfUrl = j.pdf_url;
+  S.lastPdfPreviews = j.previews || [];
+
+  const pen = j.pen_type || 'gel';
+  $$('#pv-pen-group button').forEach(b => b.classList.toggle('active', b.dataset.pen === pen));
+
+  const hasEdits = (j.edits_count || 0) > 0;
+  $('#btn-op-undo').disabled = !hasEdits;
+  $('#btn-op-reset').disabled = !hasEdits;
+
   const ins = j.inspect, ac = ins.anomaly_counts || {};
   const row = (k, label, crit) => { const v = ac[k] || 0; const cls = v === 0 ? 'ok' : (crit ? 'bad' : 'warn'); return `<div class="stat"><span>${label}</span><b class="${cls}">${v}</b></div>`; };
   $('#insp').innerHTML =
@@ -833,45 +913,48 @@ function showSnapshot(j) {
     row('prompt_collision', '压题干', true) + row('outside_margin', '越界', true) +
     row('overlap', '墨迹重叠', false) + row('gap', '大空隙', false) + row('left_edges_aligned', '左边缘过齐', false) +
     `<div class="stat"><span>已追加编辑</span><b>${j.edits_count}</b></div>` +
-    (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '') +
-    `<div class="files"><a href="#" id="lnk-pv-pdf">👁 弹窗预览当前 PDF</a><a href="${j.pdf_url}" target="_blank">在新标签页打开当前 PDF ↗</a></div>`;
-  const pvLnk = $('#lnk-pv-pdf');
-  if (pvLnk) pvLnk.onclick = (ev) => { ev.preventDefault(); openPdfModal('当前手写 PDF 预览', j.pdf_url, 'InkTwin-Output.pdf'); };
+    (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '');
+
+  await switchPreviewFormat(S.activeFmt);
 }
 
 $$('[data-op]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/scene/ops', { action: b.dataset.op });
-  showSnapshot(j); toast('已完成：' + b.textContent.trim());
+  await showSnapshot(j);
+  toast('已完成：' + b.textContent.trim());
 }));
 
-$('#btn-repen').onclick = (e) => busy(e.currentTarget, async () => {
-  const j = await api('/api/scene/ops', { action: 'repen', pen_type: $('#pv-pen').value });
-  showSnapshot(j); toast('已切换笔触：' + $('#pv-pen').value);
+$$('#pv-pen-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
+  const pen = b.dataset.pen;
+  const j = await api('/api/scene/ops', { action: 'repen', pen_type: pen });
+  await showSnapshot(j);
+  toast('已切换笔触：' + b.textContent.trim());
+}));
+
+$$('#pv-fmt-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
+  await switchPreviewFormat(b.dataset.fmt);
+  toast('已切换预览格式：' + b.textContent.trim());
+}));
+
+$('#btn-dl-active').onclick = (e) => busy(e.currentTarget, async () => {
+  const fmt = S.activeFmt;
+  const files = fmt === 'pdf' ? [S.lastPdfUrl] : (S.exportCache[fmt] || []);
+  if (!files.length) throw new Error('请先生成手写 PDF');
+  files.forEach((f, idx) => {
+    setTimeout(() => {
+      const a = document.createElement('a');
+      a.href = f;
+      a.download = fmt === 'pdf' ? 'InkTwin-Output.pdf' : f.split('/').pop();
+      a.click();
+    }, idx * 180);
+  });
+  toast(`已开始下载 ${fmt.toUpperCase()}（${files.length} 个文件）`);
 });
 
-$$('[data-export]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
-  const fmt = b.dataset.export;
-  const j = await api('/api/scene/export', { format: fmt, transparent: fmt !== 'pdf' });
-  const box = $('#exp-out');
-  if (fmt === 'pdf' && j.files.length) {
-    const f = j.files[0], fn = f.split('/').pop();
-    box.innerHTML = `<div class="actions" style="margin-top:8px"><button class="btn" id="btn-exp-pv-pdf">👁 在线预览导出的 PDF</button><a class="btn primary" href="${f}" download="${escHtml(fn)}">⬇ 下载 ${escHtml(fn)}</a></div>`;
-    $('#btn-exp-pv-pdf').onclick = () => openPdfModal(`导出预览 · ${fn}`, f, fn);
-    openPdfModal(`导出预览 · ${fn}`, f, fn);
-    toast('已导出 PDF，可预览或点击右上角下载');
-  } else {
-    box.innerHTML = `<div class="exp-grid">` + j.files.map((f, idx) => {
-      const fn = f.split('/').pop();
-      return `<div class="exp-card"><img class="thumb checker" src="${f}" data-pv-idx="${idx}" title="点击放大预览" /><div style="font-size:11px;color:var(--muted);margin-bottom:3px">第 ${idx + 1} 页 (${fmt.toUpperCase()})</div><div class="ec-act"><button data-pv-idx="${idx}">👁 预览</button><a href="${f}" download="${escHtml(fn)}">⬇ 下载</a></div></div>`;
-    }).join('') + `</div>`;
-    $$('#exp-out [data-pv-idx]').forEach(el => el.onclick = () => {
-      const i = parseInt(el.dataset.pvIdx, 10);
-      const f = j.files[i], fn = f.split('/').pop();
-      openImageModal(`透明 ${fmt.toUpperCase()} 图层 · 第 ${i + 1} 页`, [f], { downloadUrl: f, downloadName: fn, checker: true });
-    });
-    toast(`已导出 ${j.files.length} 页透明 ${fmt.toUpperCase()} 图层，点缩略图可放大预览或下载`);
-  }
-}));
+$('#btn-pv-pdf-modal').onclick = () => {
+  if (!S.lastPdfUrl) return;
+  openPdfModal('原生 PDF 阅读器预览', S.lastPdfUrl, 'InkTwin-Output.pdf');
+};
 
 $('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/scene/editor', {});

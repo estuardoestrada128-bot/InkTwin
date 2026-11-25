@@ -98,6 +98,21 @@ def _pdf_previews(pdf: Path, dpi: int = 96, max_pages: int = 10) -> List[str]:
     return out
 
 
+def _pdf_vector_previews(st: StudioState, pdf: Path, prefix: str, max_pages: int = 12) -> List[str]:
+    """Export crisp vector SVG page previews (sharp at 400%+ zoom) and return /files/ URLs."""
+    pdir = st.workdir / "previews"
+    pdir.mkdir(parents=True, exist_ok=True)
+    tag = st.next_id()
+    urls: List[str] = []
+    with fitz.open(str(pdf)) as doc:
+        for i in range(min(len(doc), max_pages)):
+            svg_txt = doc[i].get_svg_image(text_as_path=True)
+            fp = pdir / f"{prefix}_{tag}_p{i + 1}.svg"
+            fp.write_text(svg_txt, encoding="utf-8")
+            urls.append(st.url_for(fp))
+    return urls
+
+
 class StudioState:
     def __init__(self, workdir: Path):
         self.workdir = workdir.resolve()
@@ -150,7 +165,8 @@ def _snapshot(st: StudioState) -> dict:
         "run": cur["run"],
         "render": cur.get("render"),
         "pdf_url": st.url_for(cur["pdf"]),
-        "previews": _pdf_previews(cur["pdf"]),
+        "pen_type": cur.get("pen", "gel"),
+        "previews": _pdf_vector_previews(st, cur["pdf"], f"run{cur['run']}"),
         "edits_count": len(edits),
         "inspect": {
             "pages": insp.get("pages"),
@@ -286,7 +302,7 @@ def api_layout_detect(st: StudioState, p: dict) -> dict:
     blank = ldir / "blank.pdf"
     blank.write_bytes(_b64_bytes(p["pdf_b64"]))
     layout = detect_pdf_layout(blank, min_slot_h_mm=float(p.get("min_slot_mm", 15.0)))
-    return {"ok": True, "layout": layout, "previews": _pdf_previews(blank, dpi=72)}
+    return {"ok": True, "layout": layout, "previews": _pdf_vector_previews(st, blank, "lay", max_pages=10)}
 
 
 def api_template(st: StudioState, p: dict) -> dict:
@@ -299,7 +315,7 @@ def api_template(st: StudioState, p: dict) -> dict:
         res = generate_template_pdf(out, tier=tier, from_md=md, pack=load_pack(p.get("pack") or None))
     else:
         res = generate_template_pdf(out, tier=tier, chars=chars)
-    return {"ok": True, "result": res, "pdf_url": st.url_for(out), "previews": _pdf_previews(out, dpi=60, max_pages=3)}
+    return {"ok": True, "result": res, "pdf_url": st.url_for(out), "previews": _pdf_vector_previews(st, out, f"tpl_{tier}", max_pages=5)}
 
 
 def api_harvest(st: StudioState, p: dict) -> dict:
@@ -610,7 +626,7 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                             src_pdf = st.workdir / fname
                             if not src_pdf.is_file():
                                 generate_template_pdf(src_pdf, tier=tier)
-                        previews = _pdf_previews(src_pdf, dpi=110, max_pages=5)
+                        previews = _pdf_vector_previews(st, src_pdf, f"static_{tier}", max_pages=5)
                     except Exception as exc:
                         self._json({"ok": False, "error": str(exc)}, 500)
                         return

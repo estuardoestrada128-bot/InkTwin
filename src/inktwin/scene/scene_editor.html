@@ -52,6 +52,7 @@
   button.primary:hover { background: #3b7be8; }
   button.active { outline: 2px solid var(--accent); }
   .swatch { width: 18px; height: 18px; border-radius: 50%; padding: 0; border: 2px solid #fff4; }
+  .swatch.active { outline: 2px solid #fff; outline-offset: 2px; }
   main { flex: 1; display: flex; overflow: hidden; }
   #stage-wrap {
     flex: 1;
@@ -138,7 +139,7 @@
   <button id="btn-next" title="下一页">&gt;</button>
   <span class="sep"></span>
   <button id="btn-zout" title="缩小画布">−</button>
-  <span id="zoom-label" style="min-width:44px;text-align:center">100%</span>
+  <span id="zoom-label" style="min-width:44px;text-align:center;cursor:pointer" title="点击重置为 100%">100%</span>
   <button id="btn-zin" title="放大画布">+</button>
   <button id="btn-zfit" title="适应窗口宽度">适应</button>
   <span class="sep"></span>
@@ -531,6 +532,7 @@
   document.getElementById('btn-next').onclick = () => { if (currentPage < totalPages - 1) { currentPage++; selected.clear(); refreshPage(); } };
   document.getElementById('btn-zin').onclick = () => applyZoom(zoom * 1.2);
   document.getElementById('btn-zout').onclick = () => applyZoom(zoom / 1.2);
+  document.getElementById('zoom-label').onclick = () => applyZoom(1.0);
   document.getElementById('btn-zfit').onclick = () => {
     const avail = Math.max(320, stageWrap.clientWidth - 60);
     applyZoom(avail / BASE_PX);
@@ -549,6 +551,8 @@
   document.querySelectorAll('.swatch').forEach(btn => {
     btn.onclick = async () => {
       if (!selected.size) { toast('请先点击选中单字，或双击选中整行'); return; }
+      document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+      btn.classList.add('active');
       await sendOp({ op: 'pen', ids: Array.from(selected), color: btn.dataset.color });
       toast('已切换笔色');
     };
