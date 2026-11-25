@@ -1,0 +1,29 @@
+# Private personal handwriting packs (never commit personal biometrics/identity)
+packs/local/
+*.hwpack.tmp
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Runtime & generated outputs
+.inktwin/
+outputs/
+*.pdf
+*.png
+*.html
+!assets/katex/**
+!src/**/*.html
+!docs/**/*.png
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

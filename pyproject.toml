@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inktwin"
+version = "0.1.0"
+description = "Offline personal handwriting twin & math/physics vector typesetting engine"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "pymupdf",
+    "pillow",
+    "numpy",
+    "pyyaml",
+    "markdown-it-py",
+    "fonttools",
+]
+
+[project.scripts]
+inktwin = "inktwin.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+inktwin = ["renderer/js/*.js", "renderer/css/*.css", "scene/*.html", "studio/*.html"]
+
