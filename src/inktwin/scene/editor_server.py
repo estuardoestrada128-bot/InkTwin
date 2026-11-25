@@ -29,7 +29,6 @@ def start_editor_server(
     """Start local 127.0.0.1 editor server and return (server, port, url)."""
     _scene0, _edits0, resolved_dir = load_inkscene(scene_path)
     lock = threading.Lock()
-    editor_html_bytes = EDITOR_HTML_PATH.read_bytes()
 
     class _EditorHandler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -40,17 +39,20 @@ def start_editor_server(
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(data)
 
         def do_GET(self):
             clean = self.path.split("?", 1)[0]
             if clean in ("/", "/index.html"):
+                html_bytes = EDITOR_HTML_PATH.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(editor_html_bytes)))
+                self.send_header("Content-Length", str(len(html_bytes)))
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
-                self.wfile.write(editor_html_bytes)
+                self.wfile.write(html_bytes)
                 return
 
             with lock:

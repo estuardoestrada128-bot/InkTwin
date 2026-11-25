@@ -139,6 +139,22 @@ def run_phase5_tests() -> None:
             ttf_bytes = _http_get(base_url.rstrip("/") + fb["font_url"])
             assert len(ttf_bytes) > 10000
 
+            # 5a. GET /api/dev/version & persistent workdir current.json restore across restarts
+            dv = json.loads(_http_get(base_url + "api/dev/version").decode("utf-8"))
+            assert dv["ok"] and dv["boot_id"] and dv["asset_mtime"] > 0
+            assert (tmp / "studio_wd" / "current.json").is_file()
+            srv2, _p2, url2, st2 = start_studio_server(workdir=tmp / "studio_wd", port=0, dev_reload=True)
+            t2 = threading.Thread(target=srv2.serve_forever, daemon=True)
+            t2.start()
+            try:
+                st2_json = json.loads(_http_get(url2 + "api/state").decode("utf-8"))
+                assert st2_json["dev_reload"] is True and st2_json["current_run"] is not None
+                sync2 = json.loads(_http_get(url2 + "api/scene/sync?force=1").decode("utf-8"))
+                assert sync2["ok"] and sync2["pdf_url"].endswith(".pdf")
+            finally:
+                srv2.shutdown()
+                srv2.server_close()
+
             # 5b. POST /api/pack/inspect, read-only guard on public pack, clone-local & delete-variant
             insp_pub = _http_post_json(base_url + "api/pack/inspect", {"pack": "demo_sample"})
             assert insp_pub["ok"] and insp_pub["pack"]["editable"] is False

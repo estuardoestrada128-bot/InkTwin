@@ -450,9 +450,12 @@ function fitPreviewIfNeeded() {
   }
 }
 
-function switchTab(name) {
+function switchTab(name, updateHash = true) {
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+  if (updateHash) {
+    try { history.replaceState(null, '', '#' + name); } catch (_) {}
+  }
   if (name === 'forge' && !S.packInspect && S.packs.length) loadPackInspect();
   if (name === 'preview') fitPreviewIfNeeded();
 }
@@ -471,12 +474,44 @@ $('#btn-shutdown').onclick = async () => {
   }
 };
 
+let _devWatcherStarted = false;
+function startDevReloadWatcher(initialBootId) {
+  if (_devWatcherStarted) return;
+  _devWatcherStarted = true;
+  let lastBoot = initialBootId || '';
+  let lastMtime = null;
+  let reloading = false;
+  async function poll() {
+    if (reloading) return;
+    try {
+      const r = await fetch('/api/dev/version', { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (!j || !j.ok || !j.dev_reload) return;
+      if (lastMtime === null) {
+        lastMtime = j.asset_mtime;
+        lastBoot = j.boot_id;
+        return;
+      }
+      if (j.boot_id !== lastBoot || j.asset_mtime > lastMtime) {
+        reloading = true;
+        location.reload();
+      }
+    } catch (_) {}
+  }
+  poll();
+  setInterval(poll, 1000);
+}
+
 async function loadState() {
   const st = await api('/api/state');
   $('#ver').textContent = 'v' + st.version;
   const d = $('#doctor');
-  d.textContent = st.doctor.ok ? '环境就绪 · 离线' : '环境缺失：请运行 inktwin doctor';
+  d.textContent = st.doctor.ok
+    ? ('环境就绪 · 离线' + (st.dev_reload ? ' · 开发热重载' : ''))
+    : '环境缺失：请运行 inktwin doctor';
   d.className = 'pill ' + (st.doctor.ok ? 'ok' : 'bad');
+  if (st.dev_reload) startDevReloadWatcher(st.boot_id);
   S.packs = st.packs.filter(p => !p.error);
   $$('.pack-select').forEach(sel => {
     const prev = sel.value;
@@ -486,6 +521,7 @@ async function loadState() {
   const prevMerge = $('#hv-merge').value;
   $('#hv-merge').innerHTML = '<option value="">（新建字库）</option>' + S.packs.map(p => `<option value="${p.id}">${p.id}（${p.scope === 'local' ? '本地 · 直接增量更新' : '公开 · 将另存到 local'}）</option>`).join('');
   if (prevMerge) $('#hv-merge').value = prevMerge;
+  return st;
 }
 
 $('#hv-merge').onchange = () => {
@@ -1275,17 +1311,20 @@ window.addEventListener('keydown', (e) => {
 
 $('#md').value = SAMPLE_MD;
 syncOverlayUI();
-loadState().then(async () => {
+loadState().then(async (st) => {
   restoreDraft();
-  if (location.hash === '#preview') {
+  const h = (location.hash || '').replace('#', '');
+  if (st && st.current_run) {
     try {
       const j = await fetch('/api/scene/sync?force=1').then(r => r.json());
       if (j && j.ok && j.pdf_url) {
         S.editorOpened = true;
         await showSnapshot(j);
-        switchTab('preview');
       }
     } catch (_) {}
+  }
+  if (h === 'forge' || h === 'compose' || h === 'preview') {
+    switchTab(h, false);
   }
 }).catch(e => toast(e.message, true));
 </script>

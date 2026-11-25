@@ -437,6 +437,7 @@ def _cmd_studio(args: argparse.Namespace) -> int:
         workdir=Path(args.workdir) if args.workdir else None,
         port=args.port,
         open_browser=(not args.no_browser),
+        reload=bool(getattr(args, "reload", False)),
     )
     return 0
 
@@ -622,6 +623,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_st.add_argument("--port", type=int, default=0)
     p_st.add_argument("--workdir", default=None, help="Directory to store Studio projects & exports")
     p_st.add_argument("--no-browser", action="store_true")
+    p_st.add_argument("--reload", action="store_true", help="Auto-reload backend and browser on source edits (development mode)")
     p_st.set_defaults(func=_cmd_studio)
 
     return parser

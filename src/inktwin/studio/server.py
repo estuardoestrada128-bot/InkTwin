@@ -9,12 +9,16 @@ import base64
 import contextlib
 import io
 import json
+import os
 import random
 import re
+import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
+import uuid
 import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -115,13 +119,16 @@ def _pdf_vector_previews(st: StudioState, pdf: Path, prefix: str, max_pages: int
 
 
 class StudioState:
-    def __init__(self, workdir: Path):
+    def __init__(self, workdir: Path, dev_reload: bool = False):
         self.workdir = workdir.resolve()
         self.workdir.mkdir(parents=True, exist_ok=True)
+        self.dev_reload = bool(dev_reload)
+        self.boot_id = uuid.uuid4().hex[:10]
         self.counter = 0
         self.current: Optional[dict] = None
         self.lock = threading.Lock()
         self.editor_servers: List[ThreadingHTTPServer] = []
+        self._load_current()
 
     def next_id(self) -> str:
         self.counter += 1
@@ -130,6 +137,47 @@ class StudioState:
     def url_for(self, p: Path) -> str:
         rel = Path(p).resolve().relative_to(self.workdir)
         return "/files/" + rel.as_posix()
+
+    def save_current(self) -> None:
+        meta_path = self.workdir / "current.json"
+        if not self.current:
+            if meta_path.exists():
+                meta_path.unlink(missing_ok=True)
+            return
+        cur = self.current
+        payload = {
+            "counter": self.counter,
+            "run": cur["run"],
+            "dir": str(cur["dir"]),
+            "scene": str(cur["scene"]),
+            "pdf": str(cur["pdf"]),
+            "pen": cur.get("pen", "gel"),
+            "seed": cur.get("seed", 42),
+        }
+        meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _load_current(self) -> None:
+        meta_path = self.workdir / "current.json"
+        if not meta_path.is_file():
+            return
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+            rdir = Path(data["dir"])
+            sdir = Path(data["scene"])
+            pdf_p = Path(data["pdf"])
+            if (sdir / "scene.json").is_file() and pdf_p.is_file():
+                self.counter = max(self.counter, int(data.get("counter", 0)))
+                self.current = {
+                    "run": str(data["run"]),
+                    "dir": rdir,
+                    "scene": sdir,
+                    "pdf": pdf_p,
+                    "pen": str(data.get("pen") or "gel"),
+                    "seed": int(data.get("seed") or 42),
+                    "render": None,
+                }
+        except Exception:
+            pass
 
 
 # ----------------------------------------------------------------------------- API handlers
@@ -140,6 +188,8 @@ def api_state(st: StudioState, _p: dict) -> dict:
         "ok": True,
         "version": __version__,
         "workdir": str(st.workdir),
+        "dev_reload": st.dev_reload,
+        "boot_id": st.boot_id,
         "doctor": run_doctor(),
         "packs": list_packs(),
         "current_run": st.current["run"] if st.current else None,
@@ -264,6 +314,7 @@ def api_render(st: StudioState, p: dict) -> dict:
     if rc != 0 or not out_pdf.exists():
         raise RuntimeError(f"render failed (rc={rc}): {log[-1200:]}")
     st.current = {"run": rid, "dir": rdir, "scene": sdir, "pdf": out_pdf, "pen": pen, "seed": seed, "render": res}
+    st.save_current()
     return _snapshot(st)
 
 
@@ -308,6 +359,7 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
     save_edits(sdir, new_edits)
     if p.get("pen_type"):
         cur["pen"] = p["pen_type"]
+        st.save_current()
     export_scene(sdir, out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
     snap = _snapshot(st)
     snap["added"] = added_count
@@ -602,11 +654,32 @@ ROUTES_POST: Dict[str, Callable[[StudioState, dict], dict]] = {
 }
 
 
-def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[ThreadingHTTPServer, int, str, StudioState]:
+def _latest_frontend_mtime() -> float:
+    pkg_dir = Path(__file__).resolve().parents[1]
+    watched = [
+        STUDIO_HTML_PATH,
+        pkg_dir / "scene" / "scene_editor.html",
+        pkg_dir / "renderer" / "js" / "handwrite_dom.js",
+        pkg_dir / "renderer" / "css" / "handwrite.css",
+    ]
+    latest = 0.0
+    for fp in watched:
+        try:
+            if fp.is_file():
+                latest = max(latest, fp.stat().st_mtime)
+        except OSError:
+            pass
+    return round(latest, 3)
+
+
+def start_studio_server(
+    workdir: Optional[Path] = None,
+    port: int = 0,
+    dev_reload: bool = False,
+) -> Tuple[ThreadingHTTPServer, int, str, StudioState]:
     """Start InkTwin Studio on 127.0.0.1 and return (server, port, url, state)."""
     wd = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="inktwin_studio_"))
-    st = StudioState(wd)
-    html_bytes = STUDIO_HTML_PATH.read_bytes()
+    st = StudioState(wd, dev_reload=dev_reload)
 
     class _Handler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -629,7 +702,17 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
         def do_GET(self):
             clean = self.path.split("?", 1)[0]
             if clean in ("/", "/index.html"):
-                self._send(200, html_bytes, "text/html; charset=utf-8")
+                self._send(200, STUDIO_HTML_PATH.read_bytes(), "text/html; charset=utf-8")
+                return
+            if clean == "/api/dev/version":
+                self._json(
+                    {
+                        "ok": True,
+                        "dev_reload": st.dev_reload,
+                        "boot_id": st.boot_id,
+                        "asset_mtime": _latest_frontend_mtime(),
+                    }
+                )
                 return
             if clean == "/api/state":
                 with st.lock:
@@ -779,7 +862,113 @@ def _check_existing_studio(port: int) -> bool:
     return False
 
 
-def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bool = True) -> None:
+def _snapshot_py_mtimes(src_root: Path) -> Dict[str, int]:
+    snap: Dict[str, int] = {}
+    for p in src_root.rglob("*.py"):
+        if "__pycache__" in p.parts:
+            continue
+        try:
+            snap[str(p)] = p.stat().st_mtime_ns
+        except OSError:
+            pass
+    return snap
+
+
+def _shutdown_existing(port: int) -> None:
+    import urllib.request
+
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/shutdown", data=b"{}", method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=1.5):
+            pass
+    except Exception:
+        pass
+
+
+def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: bool) -> None:
+    src_root = Path(__file__).resolve().parents[1]
+    stable_wd = Path(workdir).resolve() if workdir else (Path(tempfile.gettempdir()) / "inktwin_studio_dev")
+    stable_wd.mkdir(parents=True, exist_ok=True)
+    target_port = port or 8765
+
+    if _check_existing_studio(target_port):
+        print(f"[DevReload] Stopping existing Studio on 127.0.0.1:{target_port}...")
+        _shutdown_existing(target_port)
+        time.sleep(0.6)
+
+    child_env = dict(os.environ)
+    child_env["INKTWIN_RELOAD_CHILD"] = "1"
+    child_env["INKTWIN_DEV_RELOAD"] = "1"
+
+    def _spawn():
+        cmd = [
+            sys.executable, "-m", "inktwin", "studio",
+            "--port", str(target_port),
+            "--workdir", str(stable_wd),
+            "--no-browser",
+        ]
+        return subprocess.Popen(cmd, env=child_env)
+
+    mtimes = _snapshot_py_mtimes(src_root)
+    proc = _spawn()
+    url = f"http://127.0.0.1:{target_port}/"
+    print(f"[DevReload] Watching {src_root} (workdir={stable_wd})")
+    print(f"[DevReload] Studio live at {url} — edit any .py / .html / .css / .js and save to auto-reload!")
+
+    if open_browser:
+        deadline = time.time() + 6.0
+        while time.time() < deadline:
+            if _check_existing_studio(target_port):
+                webbrowser.open(url)
+                break
+            time.sleep(0.2)
+
+    try:
+        while True:
+            time.sleep(0.6)
+            rc = proc.poll()
+            if rc is not None:
+                if rc == 0:
+                    print("[DevReload] Studio shut down cleanly.")
+                    break
+                print(f"[DevReload] Backend exited (code={rc}). Fix error and save any .py file to restart...")
+                while proc.poll() is not None:
+                    time.sleep(0.6)
+                    cur_mtimes = _snapshot_py_mtimes(src_root)
+                    if cur_mtimes != mtimes:
+                        mtimes = cur_mtimes
+                        print("[DevReload] Source edited, restarting backend...")
+                        proc = _spawn()
+                        break
+                continue
+
+            cur_mtimes = _snapshot_py_mtimes(src_root)
+            if cur_mtimes != mtimes:
+                changed = [
+                    Path(k).name
+                    for k in set(cur_mtimes) | set(mtimes)
+                    if cur_mtimes.get(k) != mtimes.get(k)
+                ]
+                mtimes = cur_mtimes
+                print(f"[DevReload] Detected change in {', '.join(changed[:5])}, restarting backend...")
+                proc.terminate()
+                try:
+                    proc.wait(timeout=2.5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                proc = _spawn()
+    except KeyboardInterrupt:
+        print("\n[DevReload] Stopping...")
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
+def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bool = True, reload: bool = False) -> None:
     if sys.stdout is None or sys.stderr is None:
         log_path = Path(tempfile.gettempdir()) / "inktwin_studio.log"
         log_f = open(log_path, "a", encoding="utf-8", buffering=1)
@@ -787,17 +976,21 @@ def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bo
             sys.stdout = log_f
         if sys.stderr is None:
             sys.stderr = log_f
+    if reload and os.environ.get("INKTWIN_RELOAD_CHILD") != "1":
+        _serve_studio_reloader(workdir=workdir, port=port, open_browser=open_browser)
+        return
     if port and _check_existing_studio(port):
         url = f"http://127.0.0.1:{port}/"
         print(json.dumps({"ok": True, "url": url, "port": port, "reused": True}, ensure_ascii=False))
         if open_browser:
             webbrowser.open(url)
         return
+    dev_mode = bool(reload or os.environ.get("INKTWIN_DEV_RELOAD") == "1")
     try:
-        server, actual, url, st = start_studio_server(workdir, port)
+        server, actual, url, st = start_studio_server(workdir, port, dev_reload=dev_mode)
     except OSError:
         # Fallback to any available ephemeral port if requested port is occupied by another app
-        server, actual, url, st = start_studio_server(workdir, 0)
+        server, actual, url, st = start_studio_server(workdir, 0, dev_reload=dev_mode)
     print(json.dumps({"ok": True, "url": url, "port": actual, "workdir": str(st.workdir)}, ensure_ascii=False))
     if open_browser:
         webbrowser.open(url)
