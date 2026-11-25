@@ -110,7 +110,13 @@ def export_html_to_pdf(
                 f"--print-to-pdf={str(out_pdf)}",
                 url,
             ]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
             if proc.returncode != 0 or not out_pdf.exists() or out_pdf.stat().st_size < 1000:
                 raise RuntimeError(
                     f"Headless PDF export failed (code={proc.returncode}):\n{proc.stderr or proc.stdout}"

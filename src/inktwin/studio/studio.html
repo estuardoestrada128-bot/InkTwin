@@ -93,6 +93,7 @@
     <button data-tab="forge">① 字库工坊 Forge</button>
     <button data-tab="compose" class="active">② 排版 Compose</button>
     <button data-tab="preview">③ 预览与微调 Preview</button>
+    <button id="btn-shutdown" title="关闭后台 InkTwin Studio 服务" style="color:var(--bad);margin-left:8px">退出服务</button>
   </nav>
 </header>
 
@@ -327,7 +328,20 @@ function switchTab(name) {
   $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
   if (name === 'forge' && !S.packInspect && S.packs.length) loadPackInspect();
 }
-$$('nav button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+$$('nav button[data-tab]').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+$('#btn-shutdown').onclick = async () => {
+  if (!confirm('关闭后台 InkTwin Studio 服务？关闭后可随时双击 start_studio.bat 重新打开。')) return;
+  try {
+    await api('/api/shutdown', {});
+    const d = $('#doctor');
+    d.textContent = '后端已停止';
+    d.className = 'pill bad';
+    toast('后台服务已安全退出');
+  } catch (e) {
+    toast(e.message, true);
+  }
+};
 
 async function loadState() {
   const st = await api('/api/state');

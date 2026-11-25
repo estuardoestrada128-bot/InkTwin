@@ -10,6 +10,7 @@ import contextlib
 import io
 import json
 import re
+import sys
 import tempfile
 import threading
 import traceback
@@ -606,6 +607,10 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
 
         def do_POST(self):
             clean = self.path.split("?", 1)[0]
+            if clean == "/api/shutdown":
+                self._json({"ok": True, "message": "shutting down"})
+                threading.Timer(0.15, server.shutdown).start()
+                return
             fn = ROUTES_POST.get(clean)
             if fn is None:
                 self._json({"ok": False, "error": "not found"}, 404)
@@ -643,6 +648,13 @@ def _check_existing_studio(port: int) -> bool:
 
 
 def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bool = True) -> None:
+    if sys.stdout is None or sys.stderr is None:
+        log_path = Path(tempfile.gettempdir()) / "inktwin_studio.log"
+        log_f = open(log_path, "a", encoding="utf-8", buffering=1)
+        if sys.stdout is None:
+            sys.stdout = log_f
+        if sys.stderr is None:
+            sys.stderr = log_f
     if port and _check_existing_studio(port):
         url = f"http://127.0.0.1:{port}/"
         print(json.dumps({"ok": True, "url": url, "port": port, "reused": True}, ensure_ascii=False))
