@@ -263,5 +263,6 @@ def resolve_scene_state(scene: dict, edits: List[dict]) -> dict:
         "glyphs": glyphs,
         "lines": lines,
         "obstacles": scene.get("obstacles", []),
+        "background_pdf": scene.get("background_pdf"),
     }
 

@@ -187,6 +187,34 @@ def detect_pdf_layout(pdf_path: Path, min_slot_h_mm: float = 15.0) -> dict:
                 })
                 slot_idx += 1
 
+            for fx, fy, fw, fh in framed_slots:
+                fcx, fcy = fx + fw * 0.5, fy + fh * 0.5
+                already_covered = any(
+                    b["page"] == pno
+                    and b["x_mm"] <= fcx <= (b["x_mm"] + b["w_mm"])
+                    and b["y_mm"] <= fcy <= (b["y_mm"] + b["h_mm"])
+                    for b in boxes
+                )
+                if already_covered:
+                    continue
+                q_own = active_qnum
+                for ay, qn in page_anchors:
+                    if ay <= fy:
+                        q_own = qn
+                if q_own <= 0:
+                    q_own = 1
+                boxes.append({
+                    "id": f"p{pno}_q{q_own}_{slot_idx}",
+                    "page": pno,
+                    "qnum": q_own,
+                    "kind": "frame",
+                    "x_mm": round(fx + 1.5, 2),
+                    "y_mm": round(fy + 1.5, 2),
+                    "w_mm": round(max(20.0, fw - 3.0), 2),
+                    "h_mm": round(max(10.0, fh - 3.0), 2),
+                })
+                slot_idx += 1
+
             # Update carry-over qnum for next page
             if page_anchors:
                 active_qnum = page_anchors[-1][1]

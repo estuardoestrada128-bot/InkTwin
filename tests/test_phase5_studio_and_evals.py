@@ -47,12 +47,15 @@ def run_phase5_tests() -> None:
             assert state["ok"] and state["doctor"]["ok"]
             assert any(p["id"] == "demo_sample" for p in state["packs"])
 
-            # 2. POST /api/preflight
+            # 2. POST /api/preflight (including explicit paper & font_size)
             md = "## 1.\n计算 $E(X)=\\frac{1}{2}$，测试函数微积分。"
-            pf = _http_post_json(base_url + "api/preflight", {"markdown": md, "pack": "demo_sample"})
-            assert pf["ok"] and "cjk" in pf["report"]
+            pf = _http_post_json(
+                base_url + "api/preflight",
+                {"markdown": md, "pack": "demo_sample", "paper": "compo", "page_size": "A4", "font_size": 14},
+            )
+            assert pf["ok"] and pf["report"]["paper"] == "compo"
 
-            # 3. GET /api/template/download (static Tier 1 & Tier 2) + POST /api/template (targeted)
+            # 3. GET /api/template/download (static Tier 1 & Tier 2) + POST /api/template (targeted, both explicit and from_md)
             t1_bytes = _http_get(base_url + "api/template/download?tier=tier1")
             t2_bytes = _http_get(base_url + "api/template/download?tier=tier2")
             assert t1_bytes.startswith(b"%PDF") and len(t1_bytes) > 5000
@@ -63,11 +66,36 @@ def run_phase5_tests() -> None:
             tpl_bytes = _http_get(base_url.rstrip("/") + tpl["pdf_url"])
             assert tpl_bytes.startswith(b"%PDF")
 
-            # 4. POST /api/layout-detect on generated blank exam
+            tpl_md = _http_post_json(
+                base_url + "api/template",
+                {"tier": "targeted", "chars": "", "markdown": "量子微积分熵变", "pack": "demo_sample"},
+            )
+            assert tpl_md["ok"] and tpl_md["result"]["pages"] >= 1
+
+            # 4. POST /api/layout-detect on generated blank exam & overlay pen switch preserves background
             blank_pdf = _create_blank_exam(tmp / "blank.pdf")
             blank_b64 = base64.b64encode(blank_pdf.read_bytes()).decode("ascii")
             ld = _http_post_json(base_url + "api/layout-detect", {"pdf_b64": blank_b64})
             assert ld["ok"] and len(ld["layout"]["boxes"]) == 4
+
+            ov_rn = _http_post_json(
+                base_url + "api/render",
+                {
+                    "markdown": "## Problem 1\n$x=1$\n\n## Problem 2\n$y=2$\n",
+                    "pack": "demo_sample",
+                    "pen_type": "gel",
+                    "overlay_pdf_b64": blank_b64,
+                    "layout": ld["layout"],
+                },
+            )
+            assert ov_rn["ok"] and len(ov_rn["previews"]) >= 1
+            ov_repen = _http_post_json(base_url + "api/scene/ops", {"action": "repen", "pen_type": "fountain"})
+            assert ov_repen["ok"] and "batches_count" in ov_repen
+            import fitz
+            ov_pdf_bytes = _http_get(base_url.rstrip("/") + ov_repen["pdf_url"])
+            with fitz.open(stream=ov_pdf_bytes, filetype="pdf") as ov_doc:
+                ov_text = "\n".join(pg.get_text() for pg in ov_doc)
+                assert "Problem 1" in ov_text, "Overlay background PDF lost after scene/ops repen!"
 
             # 5. POST /api/render -> scene/ops -> scene/export -> fontbuild
             rn = _http_post_json(

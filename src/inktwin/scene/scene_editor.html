@@ -47,9 +47,10 @@
     cursor: pointer;
     transition: background 0.12s;
   }
-  button:hover { background: #373e4c; }
+  button:hover:not(:disabled) { background: #373e4c; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover { background: #3b7be8; }
+  button.primary:hover:not(:disabled) { background: #3b7be8; }
   button.active { outline: 2px solid var(--accent); }
   .swatch { width: 18px; height: 18px; border-radius: 50%; padding: 0; border: 2px solid #fff4; }
   .swatch.active { outline: 2px solid #fff; outline-offset: 2px; }
@@ -86,6 +87,7 @@
   .sc-glyph { cursor: grab; }
   .sc-glyph:hover .sc-hit { fill: rgba(76, 141, 255, 0.12); stroke: rgba(76, 141, 255, 0.65); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
   .sc-glyph.selected .sc-hit { fill: rgba(76, 141, 255, 0.18); stroke: #2f6fff; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+  #stage-wrap.space-pan .sc-glyph:hover .sc-hit { fill: transparent; stroke: none; }
   #marquee {
     position: fixed;
     border: 1.5px dashed var(--accent);
@@ -215,6 +217,8 @@
   let showOverlay = true;
   let pageWidthMm = 210;
   let pageHeightMm = 297;
+  let editsCount = 0;
+  let initialFitDone = false;
 
   const stageWrap = document.getElementById('stage-wrap');
   const svgHost = document.getElementById('svg-host');
@@ -291,6 +295,12 @@
       g.classList.toggle('selected', selected.has(g.id));
     });
     document.getElementById('st-sel').textContent = String(selected.size);
+    const noSel = selected.size === 0;
+    ['btn-reroll', 'btn-scale-up', 'btn-scale-dn', 'btn-rot-l', 'btn-rot-r', 'btn-hide'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = noSel;
+    });
+    document.querySelectorAll('.swatch').forEach(s => { s.disabled = noSel; });
   }
 
   function renderAnomalies() {
@@ -344,11 +354,20 @@
     totalPages = Math.max(1, st.pages || 1);
     pageWidthMm = st.paper_width_mm || 210;
     pageHeightMm = st.paper_height_mm || 297;
+    const batches = (st.batches_count !== undefined ? st.batches_count : st.edits_count) || 0;
+    editsCount = batches;
     document.getElementById('st-pack').textContent = st.pack_id || '-';
     document.getElementById('st-paper').textContent = st.paper_id || '-';
-    document.getElementById('st-edits').textContent = String(st.edits_count || 0);
+    document.getElementById('st-edits').textContent = `${batches} 步`;
     inspectData = st.inspect;
     document.getElementById('page-label').textContent = `第 ${currentPage + 1} / ${totalPages} 页`;
+    document.getElementById('btn-prev').disabled = (currentPage <= 0);
+    document.getElementById('btn-next').disabled = (currentPage >= totalPages - 1);
+    const undoBtn = document.getElementById('btn-undo');
+    undoBtn.disabled = (batches === 0);
+    undoBtn.textContent = batches > 0 ? `撤销 (${batches})` : '撤销';
+    document.getElementById('btn-reset').disabled = (batches === 0);
+    document.getElementById('btn-drift').disabled = !!st.grid_lock;
     renderAnomalies();
   }
 
@@ -362,6 +381,14 @@
     }
     svgHost.innerHTML = data.svg;
     const svg = svgHost.querySelector('svg');
+    if (!initialFitDone) {
+      initialFitDone = true;
+      const avail = stageWrap.clientWidth - 60;
+      if (avail > 200 && avail < BASE_PX) {
+        zoom = Math.max(0.45, Math.round((avail / BASE_PX) * 100) / 100);
+        document.getElementById('zoom-label').textContent = Math.round(zoom * 100) + '%';
+      }
+    }
     const targetW = Math.round(BASE_PX * zoom);
     if (svg) svg.style.width = targetW + 'px';
     paperFrame.style.width = targetW + 'px';
@@ -540,9 +567,17 @@
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
+      if (editsCount === 0) { toast('没有可撤销的操作'); return; }
       await api('/api/undo', 'POST', {});
       await refreshPage();
       toast('已撤销上一步');
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (selected.size > 0) {
+        selected.clear();
+        updateSelectionUI();
+      }
       return;
     }
     if (!selected.size) return;
@@ -607,14 +642,26 @@
     });
   }
   document.getElementById('btn-export-pdf').onclick = async () => {
-    const res = await api('/api/export', 'POST', { format: 'pdf' });
-    if (res.download_urls && res.download_urls.length) triggerDownloads(res.download_urls);
-    toast(`已导出并开始下载 PDF（${res.elapsed_ms} ms）`);
+    const btn = document.getElementById('btn-export-pdf');
+    btn.disabled = true;
+    try {
+      const res = await api('/api/export', 'POST', { format: 'pdf' });
+      if (res.download_urls && res.download_urls.length) triggerDownloads(res.download_urls);
+      toast(`已导出并开始下载 PDF（${res.elapsed_ms} ms）`);
+    } finally {
+      btn.disabled = false;
+    }
   };
   document.getElementById('btn-export-png').onclick = async () => {
-    const res = await api('/api/export', 'POST', { format: 'png', transparent: true });
-    if (res.download_urls && res.download_urls.length) triggerDownloads(res.download_urls);
-    toast(`已导出 ${(res.download_urls || []).length} 页透明 PNG（${res.elapsed_ms} ms）`);
+    const btn = document.getElementById('btn-export-png');
+    btn.disabled = true;
+    try {
+      const res = await api('/api/export', 'POST', { format: 'png', transparent: true });
+      if (res.download_urls && res.download_urls.length) triggerDownloads(res.download_urls);
+      toast(`已导出 ${(res.download_urls || []).length} 页透明 PNG（${res.elapsed_ms} ms）`);
+    } finally {
+      btn.disabled = false;
+    }
   };
 
   document.getElementById('btn-inspect').classList.add('active');

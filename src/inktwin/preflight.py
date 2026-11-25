@@ -13,7 +13,7 @@ from . import ASSETS_DIR, KATEX_DIR, MEDIANS_GZ_PATH, __version__
 from .mathsplit import preprocess_markdown_block
 from .overlay import auto_find_docx, parse_docx_worksheet, parse_markdown_answers
 from .pack import HwPack, list_packs
-from .paper import PaperSpec, usable_width_mm
+from .paper import PaperSpec, resolve_paper, usable_width_mm
 
 CHROME_CANDIDATES = [
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -25,6 +25,9 @@ CHROME_CANDIDATES = [
 
 
 def find_browser() -> Optional[str]:
+    env_b = os.environ.get("INKTWIN_BROWSER")
+    if env_b and os.path.exists(env_b):
+        return env_b
     for p in CHROME_CANDIDATES:
         if os.path.exists(p):
             return p
@@ -69,7 +72,7 @@ def run_doctor() -> dict:
 def run_preflight(
     md_path: Path,
     pack: HwPack,
-    paper_spec: PaperSpec,
+    paper_spec: Optional[PaperSpec] = None,
     font_size_pt: float = 12.0,
     docx_path: Optional[Path] = None,
     no_docx: bool = False,
@@ -77,6 +80,8 @@ def run_preflight(
     flow: str = "natural",
 ) -> dict:
     """Analyze character coverage, synthesized unseen CJK, long formula splits, and matched worksheet."""
+    if paper_spec is None:
+        paper_spec = resolve_paper("grid", "A4")
     md_text = md_path.read_text(encoding="utf-8")
     md_data = parse_markdown_answers(md_text)
 

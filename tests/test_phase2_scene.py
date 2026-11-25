@@ -55,7 +55,7 @@ def run_phase2_tests() -> None:
         r = subprocess.run(
             [
                 sys.executable, "-m", "inktwin", "render", str(md_p),
-                "-o", str(pdf_p), "--pack", "andy", "--no-docx", "--paper", "grid",
+                "-o", str(pdf_p), "--pack", "demo_sample", "--no-docx", "--paper", "grid",
                 "--save-scene", str(scene_dir), "--json",
             ],
             cwd=REPO_ROOT, capture_output=True, text=True, encoding="utf-8",

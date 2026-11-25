@@ -24,18 +24,22 @@
   .grid { display: grid; gap: 16px; }
   .g2 { grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr); }
   .g3 { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
+  .pv-grid { grid-template-columns: minmax(420px, 2fr) minmax(300px, 1fr); }
+  @media (max-width: 980px) { .g2, .g3, .pv-grid { grid-template-columns: 1fr !important; } }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
   .card h2 { font-size: 15px; margin: 0 0 10px; }
   .card p.desc { color: var(--muted); margin: -4px 0 12px; font-size: 12.5px; }
   label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
   select, input[type=text], input[type=number], textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+  select:disabled, input:disabled { background: #f2f4f8; color: var(--muted); cursor: not-allowed; }
   textarea { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; min-height: 340px; resize: vertical; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; } .row > * { flex: 1; min-width: 110px; }
   button.btn, a.btn { display: inline-block; text-decoration: none; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 7px 14px; cursor: pointer; font: inherit; }
-  button.btn:hover, a.btn:hover { border-color: var(--accent); color: var(--accent); }
+  button.btn:hover:not(:disabled), a.btn:hover { border-color: var(--accent); color: var(--accent); }
   button.primary, a.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.primary:hover, a.primary:hover { color: #fff; filter: brightness(1.08); }
-  button:disabled { opacity: .5; cursor: wait; }
+  button.primary:hover:not(:disabled), a.primary:hover { color: #fff; filter: brightness(1.08); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.is-busy { cursor: wait !important; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
   .out { margin-top: 10px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 220px; overflow: auto; background: #fafbfc; border-radius: 8px; padding: 8px; }
   .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -44,7 +48,8 @@
   .pv-bar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
   .zoom-lbl { min-width: 48px; text-align: center; font-size: 13px; cursor: pointer; padding: 3px 6px; border-radius: 6px; user-select: none; }
   .zoom-lbl:hover { background: var(--accent-soft); color: var(--accent); }
-  .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; cursor: grab; user-select: none; }
+  .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; user-select: none; }
+  .pages-vp.has-pages { cursor: grab; }
   .pages-vp.panning { cursor: grabbing; }
   .pages { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; width: max-content; min-width: 100%; }
   .pages img { width: 760px; height: auto; max-width: none; margin: 0 auto; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; pointer-events: none; -webkit-user-drag: none; user-select: none; }
@@ -62,11 +67,6 @@
   .dl-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .dl-chip { display: inline-block; padding: 3px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; text-decoration: none; }
   .dl-chip:hover { filter: brightness(.95); }
-  .exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 8px; margin-top: 10px; }
-  .exp-card { border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: #fff; text-align: center; }
-  .exp-card .thumb { width: 100%; height: 140px; object-fit: contain; border-radius: 5px; border: 1px solid var(--line); cursor: zoom-in; display: block; margin-bottom: 5px; }
-  .exp-card .ec-act { display: flex; justify-content: center; gap: 6px; font-size: 12px; }
-  .exp-card .ec-act a, .exp-card .ec-act button { color: var(--accent); background: none; border: 0; padding: 2px 4px; cursor: pointer; text-decoration: none; font: inherit; }
   .font-pv { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fafbfd; }
   .font-pv textarea { min-height: 76px; font-size: 28px; line-height: 1.45; font-feature-settings: "calt" 1; background: #fff; }
   .modal-bg { position: fixed; inset: 0; background: rgba(16,20,30,.72); z-index: 80; display: none; flex-direction: column; }
@@ -92,7 +92,7 @@
   .stat { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
   .stat b.ok { color: var(--ok); } .stat b.bad { color: var(--bad); } .stat b.warn { color: var(--warn); }
   .files a { display: block; font-size: 12.5px; margin: 3px 0; color: var(--accent); }
-  .toast { position: fixed; right: 20px; bottom: 20px; background: #1d2230; color: #fff; padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .25s; max-width: 460px; z-index: 50; }
+  .toast { position: fixed; right: 20px; bottom: 20px; background: #1d2230; color: #fff; padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .25s; max-width: 460px; z-index: 120; pointer-events: none; }
   .toast.show { opacity: .95; } .toast.err { background: var(--bad); }
   .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes sp { to { transform: rotate(360deg); } }
@@ -167,7 +167,7 @@
           <div><label>合并到已有字库（可选）</label><select id="hv-merge"><option value="">（新建字库）</option></select></div>
           <div><label>保存后的字库 ID</label><input id="hv-id" type="text" value="my_hand" placeholder="同名即增量更新" /></div>
         </div>
-        <div class="actions"><button class="btn primary" id="btn-hv">提取并建库</button></div>
+        <div class="actions"><button class="btn primary" id="btn-hv" disabled>提取并建库</button></div>
         <div id="hv-out" class="out" hidden></div>
       </div>
       <div class="card">
@@ -183,7 +183,7 @@
         <div id="fb-out" class="files"></div>
         <div id="fb-pv" class="font-pv" hidden>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px;color:var(--muted)">
-            <span>字体实测预览（已启用 calt 多变体轮换，可直接打字测试）</span>
+            <span id="fb-pv-lbl">字体实测预览（已启用 calt 多变体轮换，可直接打字测试）</span>
             <label style="margin:0;display:flex;align-items:center;gap:4px">字号 <input id="fb-pv-size" type="range" min="18" max="54" value="28" style="width:72px" /></label>
           </div>
           <textarea id="fb-pv-text">000 111 222 aaa bbb f(x)=x^2+1 微积分概率论</textarea>
@@ -195,7 +195,6 @@
       <div class="vi-head">
         <h2 style="margin:0">4. 字库变体体检 &amp; 删坏字</h2>
         <select id="vi-pack" class="pack-select"></select>
-        <button class="btn" id="btn-vi-load">刷新体检</button>
         <button class="btn" id="btn-vi-clone" title="复制一份到 packs/local/ 以便安全删改">克隆到本地编辑</button>
         <button class="btn" id="btn-vi-supp" title="把当前字库里只有 1 个变体的字母和符号填入上方「靶向微字帖」">给单变体符号出补字帖</button>
       </div>
@@ -223,12 +222,19 @@
   <section id="tab-compose" class="tab active">
     <div class="grid g2">
       <div class="card">
-        <h2>Markdown + LaTeX 解答稿</h2>
-        <p class="desc">支持 <code>$...$</code> 公式、Markdown 表格、<code>```handplot</code> 草图块（number_line / func / fbd）。按 <code>## 1.</code> / <code>## Problem 1</code> 分题。</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
+          <h2 style="margin:0">Markdown + LaTeX 解答稿</h2>
+          <div style="display:flex;gap:6px">
+            <input id="md-file" type="file" accept=".md,.txt,text/markdown" hidden />
+            <button class="btn" id="btn-md-import" style="padding:4px 10px;font-size:12px" title="从电脑导入 .md 文件">导入 .md</button>
+            <button class="btn" id="btn-md-sample" style="padding:4px 10px;font-size:12px" title="恢复自带示例题目">恢复示例</button>
+          </div>
+        </div>
+        <p class="desc" style="margin-top:0">支持 <code>$...$</code> 公式、Markdown 表格、<code>```handplot</code> 草图块（number_line / func / fbd）。按 <code>## 1.</code> / <code>## Problem 1</code> 分题；框内按 <code>Ctrl+Enter</code> 直接生成。</p>
         <textarea id="md"></textarea>
         <div class="actions">
           <button class="btn" id="btn-preflight">预检缺字与公式</button>
-          <button class="btn primary" id="btn-render">生成仿手写 PDF</button>
+          <button class="btn primary" id="btn-render" title="Ctrl+Enter">生成仿手写 PDF</button>
         </div>
         <div id="pf-out" class="out" hidden></div>
         <div id="pf-act" class="actions" style="margin-top:6px" hidden></div>
@@ -253,17 +259,18 @@
           </div>
           <div class="row">
             <div><label>字号 (pt)</label><input id="opt-fs" type="number" value="12" step="0.5" min="8" max="20" /></div>
-            <div><label title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机">随机种子（可选）</label><input id="opt-seed" type="number" placeholder="留空自动" title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机" /></div>
+            <div><label title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机">随机种子（可选）</label><input id="opt-seed" type="number" placeholder="留空随机" title="填固定整数可复现完全一致的字迹随机抖动；留空每次随机" /></div>
             <div><label>页眉标签（可选）</label><input id="opt-tag" type="text" placeholder="如 W10" /></div>
           </div>
+          <div id="ov-paper-note" class="sub-lbl" hidden style="color:var(--accent);margin-top:8px">原卷叠写模式：底纸与纸型自动沿用原卷</div>
         </div>
         <div class="card">
           <h2>原题空白卷叠写（可选）</h2>
           <p class="desc">选择空白作业/试卷 PDF 后会自动识别题号与留白框；可拖动、缩放、增删答题框，点 Q 标签改题号。</p>
           <input id="ov-file" type="file" accept="application/pdf" />
           <div class="actions">
-            <button class="btn" id="btn-detect">重新检测留白框</button>
-            <button class="btn" id="btn-clear-ov">移除原卷</button>
+            <button class="btn" id="btn-detect" disabled>重新检测留白框</button>
+            <button class="btn" id="btn-clear-ov" disabled>移除原卷</button>
           </div>
           <div id="ov-info" class="out" hidden></div>
           <div id="lay-pages" class="lay-pages" style="margin-top:28px"></div>
@@ -274,7 +281,7 @@
 
   <!-- ========== Preview ========== -->
   <section id="tab-preview" class="tab">
-    <div class="grid" style="grid-template-columns: minmax(420px, 2fr) minmax(300px, 1fr);">
+    <div class="grid pv-grid">
       <div class="card">
         <div class="pv-bar">
           <button class="btn" id="btn-pv-zout" title="缩小预览">−</button>
@@ -345,7 +352,12 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0, lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0, exportCache: {}, editorOpened: false, syncing: false };
+const S = {
+  packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null,
+  viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0,
+  lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0,
+  exportCache: {}, editorOpened: false, syncing: false, userZoomed: false, autoFitted: false,
+};
 
 const SAMPLE_MD = `---
 title: 微积分作业 W3
@@ -399,19 +411,50 @@ async function api(path, body) {
   return j;
 }
 
-async function busy(btn, fn) {
-  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>' + old;
-  try { return await fn(); } catch (e) { toast(e.message, true); console.error(e); } finally { btn.disabled = false; btn.innerHTML = old; }
+async function busy(btn, fn, opts = {}) {
+  const managed = !!opts.managed;
+  const old = btn.innerHTML;
+  const wasDisabled = btn.disabled;
+  btn.disabled = true;
+  btn.classList.add('is-busy');
+  btn.innerHTML = '<span class="spinner"></span>' + old;
+  let ok = false;
+  try {
+    const res = await fn();
+    ok = true;
+    return res;
+  } catch (e) {
+    toast(e.message, true);
+    console.error(e);
+  } finally {
+    btn.classList.remove('is-busy');
+    if (!managed || !ok) {
+      btn.disabled = wasDisabled ? false : false;
+      btn.innerHTML = old;
+    }
+  }
 }
 
 function fileToB64(file) {
   return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
 }
 
+function fitPreviewIfNeeded() {
+  if (!S.userZoomed && !S.autoFitted && S.lastPdfPreviews.length) {
+    requestAnimationFrame(() => {
+      const vp = $('#pages-vp');
+      const avail = vp.clientWidth - 36;
+      if (avail > 200 && avail < 760) applyPreviewZoom(avail / 760);
+      if (vp.clientWidth > 0) S.autoFitted = true;
+    });
+  }
+}
+
 function switchTab(name) {
   $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
   if (name === 'forge' && !S.packInspect && S.packs.length) loadPackInspect();
+  if (name === 'preview') fitPreviewIfNeeded();
 }
 $$('nav button[data-tab]').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 
@@ -548,16 +591,18 @@ function applyPreviewZoom(z, anchorX = null, anchorY = null) {
   }
 }
 
-$('#btn-pv-zin').onclick = () => applyPreviewZoom(S.previewZoom * 1.2);
-$('#btn-pv-zout').onclick = () => applyPreviewZoom(S.previewZoom / 1.2);
-$('#pv-zoom-lbl').onclick = () => applyPreviewZoom(1.0);
+$('#btn-pv-zin').onclick = () => { S.userZoomed = true; applyPreviewZoom(S.previewZoom * 1.2); };
+$('#btn-pv-zout').onclick = () => { S.userZoomed = true; applyPreviewZoom(S.previewZoom / 1.2); };
+$('#pv-zoom-lbl').onclick = () => { S.userZoomed = true; applyPreviewZoom(1.0); };
 $('#btn-pv-zfit').onclick = () => {
+  S.userZoomed = true;
   const avail = Math.max(320, $('#pages-vp').clientWidth - 36);
   applyPreviewZoom(avail / 760);
 };
 $('#pages-vp').addEventListener('wheel', (e) => {
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
+    S.userZoomed = true;
     applyPreviewZoom(S.previewZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
   }
 }, { passive: false });
@@ -576,7 +621,14 @@ $('#btn-tpl').onclick = (e) => busy(e.currentTarget, async () => {
   $('#tpl-thumbs').innerHTML = j.previews.map((s, idx) => `<img src="${s}" title="点击放大预览第 ${idx + 1} 页">`).join('');
   $$('#tpl-thumbs img').forEach(im => im.onclick = () => openImageModal(`自定义补字帖（共 ${j.result.pages} 页）`, j.previews, { downloadUrl: j.pdf_url, downloadName: 'InkTwin-Targeted.pdf' }));
   const a = document.createElement('a'); a.href = j.pdf_url; a.download = 'InkTwin-Targeted.pdf'; a.click();
+  if (j.result && j.result.fallback_default) {
+    toast('当前作业汉字已全部收录，已改生成常用数字/字母练习补字帖');
+  }
 });
+
+$('#hv-file').onchange = () => {
+  $('#btn-hv').disabled = !$('#hv-file').files.length;
+};
 
 $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
   const f = $('#hv-file').files[0];
@@ -584,11 +636,15 @@ $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/harvest', { pdf_b64: await fileToB64(f), id: $('#hv-id').value, merge_into: $('#hv-merge').value || null });
   const r = j.result;
   const o = $('#hv-out'); o.hidden = false;
-  o.textContent = `✓ ${r.id}：填写 ${r.filled_cells}/${r.total_cells} 格，新增 ${r.added_glyphs} 字 / ${r.added_variants} 变体 / ${r.added_strokes} 笔画 / ${r.added_radicals} 偏旁\n共 ${r.total_chars} 字 · ${r.total_variants} 变体\n${r.pack}`;
+  let txt = `✓ ${r.id}：填写 ${r.filled_cells}/${r.total_cells} 格，新增 ${r.added_glyphs} 字 / ${r.added_variants} 变体 / ${r.added_strokes} 笔画 / ${r.added_radicals} 偏旁\n共 ${r.total_chars} 字 · ${r.total_variants} 变体\n${r.pack}`;
+  if (!r.filled_cells) {
+    txt += '\n⚠ 未提取到任何格子！请排查：① 平板是否导出了“矢量 PDF”（不能栅格化拼合为图片）；② 四角青色定位方块是否被裁切/遮盖；③ 是否使用了深色笔迹。';
+  }
+  o.textContent = txt;
   await loadState();
   $('#vi-pack').value = r.id;
   await loadPackInspect();
-  toast('建库完成：' + r.id);
+  toast(r.filled_cells ? ('建库完成：' + r.id) : '建库完成，但未提取到有效手写格子（请检查导出是否为矢量 PDF）', !r.filled_cells);
 });
 
 $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
@@ -602,6 +658,7 @@ $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
     await ff.load();
     document.fonts.add(ff);
     $('#fb-pv').hidden = false;
+    $('#fb-pv-lbl').textContent = `字体实测预览：${fname}（已启用 calt 多变体轮换，可直接打字）`;
     $('#fb-pv-text').style.fontFamily = `'${fam}', sans-serif`;
   } catch (err) {
     console.warn('FontFace preview failed:', err);
@@ -632,11 +689,37 @@ async function loadPackInspect(keepLimit = false) {
   renderPackInspect();
 }
 
+const VI_TAB_LABELS = {
+  all: '全部', flagged: '疑似异常', single: '仅 1 变体',
+  alnum: '数字与字母', math: '数学符号', struct: '结构符号', cjk: '汉字',
+};
+
 function renderPackInspect() {
   const data = S.packInspect;
   if (!data) return;
   const pk = data.pack;
   const st = pk.strokes || {};
+
+  const cloneBtn = $('#btn-vi-clone');
+  cloneBtn.textContent = pk.editable ? '复制备份' : '克隆到本地以编辑';
+  cloneBtn.classList.toggle('suggest', !pk.editable);
+
+  const lowList = pk.low_variant_non_cjk || [];
+  const suppBtn = $('#btn-vi-supp');
+  suppBtn.disabled = lowList.length === 0;
+  suppBtn.textContent = lowList.length > 0 ? `给单变体符号出补字帖 (${lowList.length})` : '字母符号均有多变体';
+
+  const counts = { all: data.items.length, flagged: 0, single: 0, alnum: 0, math: 0, struct: 0, cjk: 0 };
+  data.items.forEach(it => {
+    if (it.flagged) counts.flagged++;
+    if (it.variants.length === 1) counts.single++;
+    if (counts[it.group] !== undefined) counts[it.group]++;
+  });
+  $$('#vi-tabs button').forEach(b => {
+    const k = b.dataset.vf;
+    b.textContent = `${VI_TAB_LABELS[k] || k} (${counts[k] ?? 0})`;
+  });
+
   $('#vi-summary').innerHTML =
     `<span class="pill ${pk.editable ? 'ok' : 'gray'}">${pk.editable ? '本地可编辑' : '公开只读示例'}</span>` +
     `<span class="pill">${pk.total_chars} 字符 · ${pk.total_variants} 变体（汉字 ${pk.cjk_chars}）</span>` +
@@ -711,13 +794,29 @@ function renderPackInspect() {
     if (cnt <= 1 && !confirm(`这是「${STRUCT_NAMES[ch] || ch}」仅剩的最后一个变体，删除后会移除该字符，确定删除？`)) return;
     btn.disabled = true;
     try {
-      const sy = window.scrollY;
       await api('/api/pack/delete-variant', { pack: pk.id, char: ch, vidx });
+      // Update inspected pack snapshot in-place for instant feedback without 1.8MB re-fetch
+      const itemIdx = data.items.findIndex(it => it.char === ch);
+      if (itemIdx >= 0) {
+        const it = data.items[itemIdx];
+        it.variants.splice(vidx, 1);
+        it.variants.forEach((v, i) => { v.vidx = i; });
+        if (!it.variants.length) {
+          data.items.splice(itemIdx, 1);
+        } else {
+          it.flagged = it.variants.some(v => v.flags && v.flags.length);
+        }
+        pk.total_chars = data.items.length;
+        pk.total_variants = data.items.reduce((s, x) => s + x.variants.length, 0);
+        pk.cjk_chars = data.items.filter(x => x.group === 'cjk').length;
+        pk.single_variant_chars = data.items.filter(x => x.variants.length === 1).length;
+        pk.flagged_chars = data.items.filter(x => x.flagged).length;
+        pk.flagged_variants = data.items.reduce((s, x) => s + x.variants.filter(v => v.flags && v.flags.length).length, 0);
+        pk.low_variant_non_cjk = data.items.filter(x => x.variants.length === 1 && x.group !== 'cjk' && !x.char.startsWith('__')).map(x => x.char);
+      }
+      renderPackInspect();
+      loadState().then(() => { $('#vi-pack').value = pk.id; }).catch(() => {});
       toast(`已删除「${STRUCT_NAMES[ch] || ch}」的第 ${vidx + 1} 个变体`);
-      await loadState();
-      $('#vi-pack').value = pk.id;
-      await loadPackInspect(true);
-      window.scrollTo({ top: sy });
     } catch (e) {
       toast(e.message, true);
       btn.disabled = false;
@@ -725,7 +824,6 @@ function renderPackInspect() {
   });
 }
 
-$('#btn-vi-load').onclick = (e) => busy(e.currentTarget, loadPackInspect);
 $('#vi-pack').onchange = () => loadPackInspect().catch(e => toast(e.message, true));
 $('#vi-search').oninput = () => { S.viLimit = 60; renderPackInspect(); };
 $('#btn-vi-more').onclick = () => { S.viLimit += 80; renderPackInspect(); };
@@ -766,13 +864,91 @@ function renderOptions() {
   };
 }
 
+const DRAFT_KEY = 'inktwin_studio_draft_v1';
+const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-mood', 'opt-fs', 'opt-tag'];
+let draftTimer = null;
+
+function saveDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => {
+    try {
+      const obj = { md: $('#md').value };
+      DRAFT_FIELDS.forEach(id => { const el = $('#' + id); if (el) obj[id] = el.value; });
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(obj));
+    } catch (_) {}
+  }, 250);
+}
+
+function restoreDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (typeof obj.md === 'string' && obj.md.length) $('#md').value = obj.md;
+    DRAFT_FIELDS.forEach(id => {
+      const el = $('#' + id);
+      const val = obj[id];
+      if (!el || val === undefined || val === '') return;
+      if (el.tagName === 'SELECT') {
+        if (Array.from(el.options).some(o => o.value === val)) el.value = val;
+      } else {
+        el.value = val;
+      }
+    });
+  } catch (_) {}
+}
+
+function syncOverlayUI() {
+  const hasOv = !!S.overlayB64 || !!$('#ov-file').files.length;
+  $('#btn-detect').disabled = !hasOv;
+  $('#btn-clear-ov').disabled = !hasOv;
+  $('#opt-paper').disabled = hasOv;
+  $('#opt-size').disabled = hasOv;
+  $('#ov-paper-note').hidden = !hasOv;
+}
+
 $('#opt-pen').onchange = () => {
   if ($('#opt-pen').value === 'pencil') $('#opt-ink').value = 'pencil';
   else if ($('#opt-ink').value === 'pencil') $('#opt-ink').value = 'black';
+  saveDraft();
+};
+
+$('#md').addEventListener('input', saveDraft);
+$('#md').addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    $('#btn-render').click();
+  }
+});
+DRAFT_FIELDS.forEach(id => {
+  const el = $('#' + id);
+  if (el && el.id !== 'opt-pen') el.addEventListener('change', saveDraft);
+  if (el && el.tagName === 'INPUT') el.addEventListener('input', saveDraft);
+});
+
+$('#btn-md-import').onclick = () => $('#md-file').click();
+$('#md-file').onchange = async () => {
+  const f = $('#md-file').files[0];
+  if (!f) return;
+  $('#md').value = await f.text();
+  saveDraft();
+  toast('已导入文档：' + f.name);
+};
+$('#btn-md-sample').onclick = () => {
+  if ($('#md').value.trim() && $('#md').value !== SAMPLE_MD && !confirm('确定用自带示例替换当前解答稿？')) return;
+  $('#md').value = SAMPLE_MD;
+  saveDraft();
+  toast('已恢复示例解答稿');
 };
 
 $('#btn-preflight').onclick = (e) => busy(e.currentTarget, async () => {
-  const j = await api('/api/preflight', { markdown: $('#md').value, pack: $('#opt-pack').value });
+  const j = await api('/api/preflight', {
+    markdown: $('#md').value,
+    pack: $('#opt-pack').value,
+    paper: $('#opt-paper').value,
+    page_size: $('#opt-size').value,
+    font_size: parseFloat($('#opt-fs').value || '12'),
+  });
   const r = j.report, c = r.cjk;
   const o = $('#pf-out'); o.hidden = false;
   o.textContent = `真迹汉字覆盖：${c.real_in_pack}/${c.total_unique}（${(c.real_coverage_ratio * 100).toFixed(1)}%）\n合成兜底生字（${c.synthesized_unseen}）：${(c.unseen_chars || []).join('') || '无'}\n长公式断行：${(r.formula_splits || []).length} 处\n可用宽度：${r.usable_width_mm} mm`;
@@ -799,6 +975,7 @@ $('#btn-render').onclick = (e) => busy(e.currentTarget, async () => {
     S.overlayB64 = await fileToB64($('#ov-file').files[0]);
   }
   const j = await api('/api/render', renderOptions());
+  S.editorOpened = false;
   await showSnapshot(j);
   switchTab('preview');
   toast('已生成：' + j.inspect.glyph_count + ' 个手写图元');
@@ -808,6 +985,7 @@ async function runLayoutDetect() {
   const f = $('#ov-file').files[0];
   if (!f) throw new Error('请先选择空白原卷 PDF');
   S.overlayB64 = await fileToB64(f);
+  syncOverlayUI();
   const j = await api('/api/layout-detect', { pdf_b64: S.overlayB64 });
   S.layout = j.layout; S.layoutPreviews = j.previews;
   const o = $('#ov-info'); o.hidden = false;
@@ -816,6 +994,7 @@ async function runLayoutDetect() {
 }
 
 $('#ov-file').onchange = () => {
+  syncOverlayUI();
   if ($('#ov-file').files[0]) busy($('#btn-detect'), runLayoutDetect);
 };
 $('#btn-detect').onclick = (e) => busy(e.currentTarget, runLayoutDetect);
@@ -823,6 +1002,7 @@ $('#btn-detect').onclick = (e) => busy(e.currentTarget, runLayoutDetect);
 $('#btn-clear-ov').onclick = () => {
   S.overlayB64 = null; S.layout = null; S.layoutPreviews = [];
   $('#ov-file').value = ''; $('#ov-info').hidden = true; $('#lay-pages').innerHTML = '';
+  syncOverlayUI();
 };
 
 function placeBox(el, b, pg) {
@@ -889,7 +1069,18 @@ const FMT_LABELS = {
   png: '透明 PNG 图层 · 300 DPI 透明底',
 };
 
+function docFileName(ext = 'pdf') {
+  const txt = $('#md').value || '';
+  const fm = txt.match(/^\s*title:\s*(.+)$/m);
+  const h1 = txt.match(/^\s*#\s+(.+)$/m);
+  const raw = (fm ? fm[1] : (h1 ? h1[1] : '')).trim().replace(/^["']|["']$/g, '');
+  const clean = raw.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60);
+  return (clean || 'InkTwin-Output') + '.' + ext;
+}
+
 function renderPreviewPages(urls, isTransparent = false) {
+  const has = (urls || []).length > 0;
+  $('#pages-vp').classList.toggle('has-pages', has);
   const wPx = Math.round(760 * S.previewZoom);
   const cls = isTransparent ? ' class="checker"' : '';
   $('#pages').innerHTML = (urls || []).map((s, i) => `<img src="${s}"${cls} style="width:${wPx}px" alt="第 ${i + 1} 页">`).join('');
@@ -947,7 +1138,7 @@ async function showSnapshot(j) {
   const ins = j.inspect, ac = ins.anomaly_counts || {};
   const gapCnt = ac.gap || 0;
   const alignedCnt = ac.left_edges_aligned || 0;
-  const editsCnt = j.edits_count || 0;
+  const batchesCnt = (j.batches_count !== undefined ? j.batches_count : j.edits_count) || 0;
 
   const tightenBtn = $('#btn-op-tighten');
   tightenBtn.disabled = gapCnt === 0;
@@ -961,9 +1152,10 @@ async function showSnapshot(j) {
 
   const undoBtn = $('#btn-op-undo');
   const resetBtn = $('#btn-op-reset');
-  undoBtn.disabled = editsCnt === 0;
-  resetBtn.disabled = editsCnt === 0;
-  undoBtn.textContent = editsCnt > 0 ? `↶ 撤销 (${editsCnt})` : '↶ 撤销';
+  undoBtn.disabled = batchesCnt === 0;
+  resetBtn.disabled = batchesCnt === 0;
+  undoBtn.textContent = batchesCnt > 0 ? `↶ 撤销 (${batchesCnt})` : '↶ 撤销';
+  resetBtn.textContent = '↺ 全部还原';
 
   const items = [
     ['prompt_collision', '压题干', true],
@@ -997,15 +1189,21 @@ $$('[data-op]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () =
   await showSnapshot(j);
   if (act === 'tighten') toast(j.added ? `已收拢 ${j.added} 处过宽空隙` : '当前没有需要收拢的空隙');
   else if (act === 'drift') toast(j.added ? '已增加自然左缘起伏' : '左缘已足够自然');
-  else toast('已完成：' + b.textContent.trim());
-}));
+  else if (act === 'undo') toast('已撤销上一步');
+  else if (act === 'reset') toast('已还原全部微调');
+  else toast('已完成');
+}, { managed: true }));
 
 $$('#pv-pen-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   const pen = b.dataset.pen;
+  const label = b.textContent.trim();
+  const autoSwitched = (pen !== 'gel' && S.activeFmt === 'svg');
+  if (autoSwitched) S.activeFmt = 'png';
   const j = await api('/api/scene/ops', { action: 'repen', pen_type: pen });
   await showSnapshot(j);
-  toast('已切换笔触：' + b.textContent.trim());
-}));
+  if (autoSwitched) toast(`透明 SVG 为纯矢量不含纸纹，已自动切到「透明 PNG」以展示${label}材质`);
+  else toast('已切换笔触：' + label);
+}, { managed: true }));
 
 $$('#pv-fmt-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   await switchPreviewFormat(b.dataset.fmt);
@@ -1020,7 +1218,7 @@ $('#btn-dl-active').onclick = (e) => busy(e.currentTarget, async () => {
     setTimeout(() => {
       const a = document.createElement('a');
       a.href = f;
-      a.download = fmt === 'pdf' ? 'InkTwin-Output.pdf' : f.split('/').pop();
+      a.download = fmt === 'pdf' ? docFileName('pdf') : f.split('/').pop();
       a.click();
     }, idx * 180);
   });
@@ -1029,7 +1227,7 @@ $('#btn-dl-active').onclick = (e) => busy(e.currentTarget, async () => {
 
 $('#btn-pv-pdf-modal').onclick = () => {
   if (!S.lastPdfUrl) return;
-  openPdfModal('原生 PDF 阅读器预览', S.lastPdfUrl, 'InkTwin-Output.pdf');
+  openPdfModal('原生 PDF 阅读器预览', S.lastPdfUrl, docFileName('pdf'));
 };
 
 $('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {
@@ -1056,7 +1254,8 @@ window.addEventListener('focus', syncFromEditor);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) syncFromEditor(); });
 
 $('#md').value = SAMPLE_MD;
-loadState().catch(e => toast(e.message, true));
+syncOverlayUI();
+loadState().then(restoreDraft).catch(e => toast(e.message, true));
 </script>
 </body>
 </html>

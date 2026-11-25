@@ -80,7 +80,8 @@ def _cmd_preflight(args: argparse.Namespace) -> int:
         print(json.dumps(err, ensure_ascii=False) if args.json else err["error"], file=sys.stderr)
         return 1
     pack = load_pack(args.pack)
-    paper_spec = resolve_paper(args.paper, args.page_size)
+    paper_key = "grid" if args.paper == "auto" else args.paper
+    paper_spec = resolve_paper(paper_key, args.page_size)
     docx_p = Path(args.docx).resolve() if args.docx else None
     report = run_preflight(
         md_path=md_path,
@@ -503,7 +504,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pre.add_argument("-p", "--pack", default=None)
     p_pre.add_argument("-d", "--docx", default=None)
     p_pre.add_argument("--no-docx", action="store_true")
-    p_pre.add_argument("--paper", choices=sorted(PAPERS.keys()), default="grid")
+    p_pre.add_argument("--paper", choices=["auto"] + sorted(PAPERS.keys()), default="grid")
     p_pre.add_argument("--page-size", choices=["A4", "B5", "16K", "LETTER"], default="A4")
     p_pre.add_argument("--font-size", type=float, default=12.0)
     p_pre.add_argument("--style", choices=["concise", "andy", "full"], default="concise")

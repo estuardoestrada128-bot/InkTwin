@@ -175,7 +175,9 @@ def build_template_cells(
                 _push(ch)
             for tk in pf.get("missing_glyphs", []):
                 _push(tk)
+        fallback_default = False
         if not char_list:
+            fallback_default = True
             for ch in "0123456789xyz=+-":
                 _push(ch)
 
@@ -195,6 +197,8 @@ def build_template_cells(
             chunk = items[p * per_page : (p + 1) * per_page]
             all_cells.extend(_pack_items_to_cells(p, chunk, prefix="tgt"))
             titles[p] = f"InkTwin Targeted Supplement Sheet ({p + 1}/{num_pages}) - Write with Dark Ink"
+        if fallback_default and 0 in titles:
+            titles[0] = "InkTwin Targeted Sheet (Fallback Default Set) - Write with Dark Ink"
         return all_cells, titles
 
     if tier_l == "tier2":
@@ -399,6 +403,7 @@ def generate_template_pdf(
         "tier": tier,
         "pages": num_pages,
         "cells": len(cells),
+        "fallback_default": any("Fallback Default" in t for t in titles.values()),
     }
 
 

@@ -9,6 +9,7 @@ import base64
 import contextlib
 import io
 import json
+import random
 import re
 import sys
 import tempfile
@@ -148,10 +149,23 @@ def api_state(st: StudioState, _p: dict) -> dict:
 def api_preflight(st: StudioState, p: dict) -> dict:
     md = st.workdir / f"preflight_{st.next_id()}.md"
     md.write_text(p.get("markdown", ""), encoding="utf-8")
-    rc, res, log = _run_cli(["preflight", str(md), "--pack", p.get("pack") or "demo_sample", "--no-docx", "--json"])
+    paper_arg = p.get("paper") or "grid"
+    argv = [
+        "preflight", str(md),
+        "--pack", p.get("pack") or "demo_sample",
+        "--paper", paper_arg,
+        "--page-size", p.get("page_size") or "A4",
+        "--font-size", str(float(p.get("font_size") or 12.0)),
+        "--no-docx", "--json",
+    ]
+    rc, res, log = _run_cli(argv)
     if rc != 0 or res is None:
         raise RuntimeError(f"preflight failed: {log[-800:]}")
     return {"ok": True, "report": res}
+
+
+def _count_batches(edits: list) -> int:
+    return len({int(op.get("batch", i)) for i, op in enumerate(edits)})
 
 
 def _edits_sig(scene_dir: Path) -> str:
@@ -169,26 +183,45 @@ def _snapshot(st: StudioState) -> dict:
     scene, edits, _ = load_inkscene(cur["scene"])
     insp = inspect_scene(scene, edits)
     cur["edits_sig"] = _edits_sig(cur["scene"])
+    ac = dict(insp.get("anomaly_counts", {}))
+    aligned_pages = insp.get("left_edges_aligned_pages") or []
+    if aligned_pages:
+        ac["left_edges_aligned"] = len(aligned_pages)
+    raw_hints = insp.get("hints", [])
+    friendly_hints = [
+        ("多行左边缘偏齐，可点下方「增加左缘起伏」让排版更自然" if "inktwin scene drift" in str(h) else str(h))
+        for h in raw_hints
+    ]
     return {
         "ok": True,
         "run": cur["run"],
         "render": cur.get("render"),
         "pdf_url": st.url_for(cur["pdf"]),
         "pen_type": cur.get("pen", "gel"),
+        "seed": cur.get("seed"),
         "grid_lock": bool((scene.get("paper") or {}).get("grid_lock", False)),
         "previews": _pdf_vector_previews(st, cur["pdf"], f"run{cur['run']}"),
         "edits_count": len(edits),
+        "batches_count": _count_batches(edits),
         "inspect": {
             "pages": insp.get("pages"),
             "glyph_count": insp.get("glyph_count"),
             "line_count": insp.get("line_count"),
-            "anomaly_counts": insp.get("anomaly_counts", {}),
-            "hints": insp.get("hints", []),
+            "anomaly_counts": ac,
+            "hints": friendly_hints,
         },
     }
 
 
 def api_render(st: StudioState, p: dict) -> dict:
+    for es in st.editor_servers:
+        try:
+            es.shutdown()
+            es.server_close()
+        except Exception:
+            pass
+    st.editor_servers.clear()
+
     rid = st.next_id()
     rdir = st.workdir / f"run_{rid}"
     rdir.mkdir(parents=True, exist_ok=True)
@@ -197,6 +230,7 @@ def api_render(st: StudioState, p: dict) -> dict:
     out_pdf = rdir / "output.pdf"
     sdir = rdir / "scene"
     pen = p.get("pen_type") or "gel"
+    seed = int(p["seed"]) if p.get("seed") not in (None, "") else random.randint(1, 999999)
 
     argv = [
         "render", str(md), "-o", str(out_pdf),
@@ -208,9 +242,8 @@ def api_render(st: StudioState, p: dict) -> dict:
         "--pen-type", pen,
         "--page-size", p.get("page_size") or "A4",
         "--font-size", str(float(p.get("font_size") or 12.0)),
+        "--seed", str(seed),
     ]
-    if p.get("seed") not in (None, ""):
-        argv += ["--seed", str(int(p["seed"]))]
     if p.get("tag"):
         argv += ["--tag", str(p["tag"])]
 
@@ -230,7 +263,7 @@ def api_render(st: StudioState, p: dict) -> dict:
     rc, res, log = _run_cli(argv)
     if rc != 0 or not out_pdf.exists():
         raise RuntimeError(f"render failed (rc={rc}): {log[-1200:]}")
-    st.current = {"run": rid, "dir": rdir, "scene": sdir, "pdf": out_pdf, "pen": pen, "render": res}
+    st.current = {"run": rid, "dir": rdir, "scene": sdir, "pdf": out_pdf, "pen": pen, "seed": seed, "render": res}
     return _snapshot(st)
 
 
@@ -243,10 +276,10 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
     added_count = 0
     if action == "tighten":
         new_edits, added = apply_tighten(scene, edits)
-        added_count = len(added)
+        added_count = sum(1 for op in added if op.get("op") != "note")
     elif action == "drift":
         new_edits, added = apply_drift(scene, edits, force=bool(p.get("force", True)))
-        added_count = len(added)
+        added_count = sum(1 for op in added if op.get("op") != "note")
     elif action == "undo":
         new_edits, _ = undo_last_batch(edits)
     elif action == "reset":
@@ -275,7 +308,7 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
     save_edits(sdir, new_edits)
     if p.get("pen_type"):
         cur["pen"] = p["pen_type"]
-    export_scene(sdir, out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"])
+    export_scene(sdir, out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
     snap = _snapshot(st)
     snap["added"] = added_count
     return snap
@@ -290,12 +323,12 @@ def api_scene_export(st: StudioState, p: dict) -> dict:
     eid = st.next_id()
     if fmt == "pdf":
         target = cur["dir"] / f"export_{eid}.pdf"
-        res = export_scene(cur["scene"], out_pdf=target, fmt="pdf", dpi=300, pen_type=cur["pen"], transparent=transparent)
+        res = export_scene(cur["scene"], out_pdf=target, fmt="pdf", dpi=300, pen_type=cur["pen"], transparent=transparent, seed=cur.get("seed", 42))
     else:
         target_dir = cur["dir"] / f"export_{eid}_{fmt}"
         res = export_scene(
             cur["scene"], out_dir=target_dir, fmt=fmt, dpi=int(p.get("dpi", 300)),
-            transparent=transparent, pen_type=(cur["pen"] if fmt == "png" else "gel"),
+            transparent=transparent, pen_type=(cur["pen"] if fmt == "png" else "gel"), seed=cur.get("seed", 42),
         )
     return {"ok": True, "format": fmt, "files": [st.url_for(Path(f)) for f in res.get("outputs", [])]}
 
@@ -304,11 +337,14 @@ def api_scene_editor(st: StudioState, _p: dict) -> dict:
     cur = st.current
     if not cur:
         raise RuntimeError("No active render.")
+    if cur.get("editor_url"):
+        return {"ok": True, "url": cur["editor_url"]}
     from ..scene.editor_server import start_editor_server
 
-    server, port, url = start_editor_server(cur["scene"], port=0)
+    server, port, url = start_editor_server(cur["scene"], port=0, pen_getter=lambda c=cur: c.get("pen", "gel"))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     st.editor_servers.append(server)
+    cur["editor_url"] = url
     return {"ok": True, "url": url}
 
 
@@ -513,6 +549,13 @@ def api_pack_delete_variant(st: StudioState, p: dict) -> dict:
     manifest["total_chars"] = len(pk.glyphs)
     manifest["total_variants"] = pk.variant_count
     manifest["facets"] = compute_facets(pk.glyphs, pk.style_model)
+    manifest["stats"] = {
+        "total_chars": len(pk.glyphs),
+        "real_cjk_chars": pk.real_cjk_count,
+        "variants": pk.variant_count,
+        "radicals": len(pk.radicals),
+        "strokes": sum(len(v) for v in pk.strokes.values()),
+    }
     manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     tmp_path = pk.source_path.with_suffix(".hwpack.tmp")
@@ -606,7 +649,7 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                         if sig == cur.get("edits_sig"):
                             self._json({"ok": True, "changed": False})
                             return
-                        export_scene(cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"])
+                        export_scene(cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
                         snap = _snapshot(st)
                         snap["changed"] = True
                         self._json(snap)

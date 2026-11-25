@@ -7,7 +7,7 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 from .inspector import inspect_scene
 from .ops import apply_drift, apply_tighten, make_atomic_ops, next_batch_id, undo_last_batch
@@ -17,7 +17,15 @@ from .schema import load_inkscene, resolve_scene_state, save_edits
 EDITOR_HTML_PATH = Path(__file__).resolve().parent / "scene_editor.html"
 
 
-def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPServer, int, str]:
+def _count_batches(edits: list) -> int:
+    return len({int(op.get("batch", i)) for i, op in enumerate(edits)})
+
+
+def start_editor_server(
+    scene_path: Path,
+    port: int = 0,
+    pen_getter: Optional[Callable[[], str]] = None,
+) -> Tuple[ThreadingHTTPServer, int, str]:
     """Start local 127.0.0.1 editor server and return (server, port, url)."""
     _scene0, _edits0, resolved_dir = load_inkscene(scene_path)
     lock = threading.Lock()
@@ -57,8 +65,11 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                             "paper_id": paper.get("id", "white"),
                             "paper_width_mm": float(paper.get("width_mm") or 210.0),
                             "paper_height_mm": float(paper.get("height_mm") or 297.0),
+                            "grid_lock": bool(paper.get("grid_lock", False)),
+                            "pen_type": (pen_getter() if pen_getter else "gel"),
                             "pages": insp["pages"],
                             "edits_count": len(edits),
+                            "batches_count": _count_batches(edits),
                             "inspect": insp,
                         }
                     )
@@ -183,7 +194,13 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                                 if g.get("id") in id_set and len(pool.get(g.get("ch", ""), [])) >= 2
                             )
                         save_edits(sdir, new_edits)
-                        resp_obj = {"ok": True, "added": len(added), "edits_count": len(new_edits)}
+                        real_added = sum(1 for op in added if op.get("op") != "note")
+                        resp_obj = {
+                            "ok": True,
+                            "added": real_added,
+                            "edits_count": len(new_edits),
+                            "batches_count": _count_batches(new_edits),
+                        }
                         if changed_reroll is not None:
                             resp_obj["rerolled"] = changed_reroll
                         self._send_json(resp_obj)
@@ -192,12 +209,17 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                     if clean == "/api/undo":
                         new_edits, removed = undo_last_batch(edits)
                         save_edits(sdir, new_edits)
-                        self._send_json({"ok": True, "removed": removed, "edits_count": len(new_edits)})
+                        self._send_json({
+                            "ok": True,
+                            "removed": removed,
+                            "edits_count": len(new_edits),
+                            "batches_count": _count_batches(new_edits),
+                        })
                         return
 
                     if clean == "/api/reset":
                         save_edits(sdir, [])
-                        self._send_json({"ok": True, "edits_count": 0})
+                        self._send_json({"ok": True, "edits_count": 0, "batches_count": 0})
                         return
 
                     if clean == "/api/export":
@@ -205,7 +227,8 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
 
                         fmt = payload.get("format", "pdf")
                         transp = bool(payload.get("transparent", False))
-                        res = export_scene(sdir, fmt=fmt, transparent=transp)
+                        pen = (pen_getter() if (pen_getter and fmt != "svg") else "gel") or "gel"
+                        res = export_scene(sdir, fmt=fmt, transparent=transp, pen_type=pen)
                         urls = []
                         for out_f in res.get("outputs", []):
                             try:

@@ -208,7 +208,7 @@ def build_html(
                 pre, sp = preprocess_markdown_block(sec["markdown"], avail_mm, font_size_pt, flow=flow, style=style)
                 for s in sp:
                     all_splits.append({"question": sec["num"], **s})
-                ans_html = render_markdown_with_math_placeholders(pre, pack=pack, seed=seed + qnum * 19)
+                ans_html = render_markdown_with_math_placeholders(pre, pack=pack, seed=seed + sec["num"] * 19)
                 blocks_html.append(
                     f"""
                     <section class="ws-question" data-qnum="{sec['num']}">
