@@ -892,7 +892,7 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
     target_port = port or 8765
 
     if _check_existing_studio(target_port):
-        print(f"[DevReload] Stopping existing Studio on 127.0.0.1:{target_port}...")
+        print(f"[DevReload] Stopping existing Studio on 127.0.0.1:{target_port}...", flush=True)
         _shutdown_existing(target_port)
         time.sleep(0.6)
 
@@ -912,10 +912,10 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
     mtimes = _snapshot_py_mtimes(src_root)
     proc = _spawn()
     url = f"http://127.0.0.1:{target_port}/"
-    print(f"[DevReload] Watching {src_root} (workdir={stable_wd})")
-    print(f"[DevReload] Studio live at {url} — edit any .py / .html / .css / .js and save to auto-reload!")
+    print(f"[DevReload] Watching {src_root} (workdir={stable_wd})", flush=True)
+    print(f"[DevReload] Studio live at {url} - edit any .py / .html / .css / .js and save to auto-reload!", flush=True)
 
-    if open_browser:
+    if open_browser and os.environ.get("INKTWIN_NO_BROWSER") != "1":
         deadline = time.time() + 6.0
         while time.time() < deadline:
             if _check_existing_studio(target_port):
@@ -929,15 +929,15 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
             rc = proc.poll()
             if rc is not None:
                 if rc == 0:
-                    print("[DevReload] Studio shut down cleanly.")
+                    print("[DevReload] Studio shut down cleanly.", flush=True)
                     break
-                print(f"[DevReload] Backend exited (code={rc}). Fix error and save any .py file to restart...")
+                print(f"[DevReload] Backend exited (code={rc}). Fix error and save any .py file to restart...", flush=True)
                 while proc.poll() is not None:
                     time.sleep(0.6)
                     cur_mtimes = _snapshot_py_mtimes(src_root)
                     if cur_mtimes != mtimes:
                         mtimes = cur_mtimes
-                        print("[DevReload] Source edited, restarting backend...")
+                        print("[DevReload] Source edited, restarting backend...", flush=True)
                         proc = _spawn()
                         break
                 continue
@@ -950,7 +950,7 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
                     if cur_mtimes.get(k) != mtimes.get(k)
                 ]
                 mtimes = cur_mtimes
-                print(f"[DevReload] Detected change in {', '.join(changed[:5])}, restarting backend...")
+                print(f"[DevReload] Detected change in {', '.join(changed[:5])}, restarting backend...", flush=True)
                 proc.terminate()
                 try:
                     proc.wait(timeout=2.5)
@@ -959,7 +959,7 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
                     proc.wait()
                 proc = _spawn()
     except KeyboardInterrupt:
-        print("\n[DevReload] Stopping...")
+        print("\n[DevReload] Stopping...", flush=True)
         if proc.poll() is None:
             proc.terminate()
             try:
@@ -969,6 +969,7 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
 
 
 def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bool = True, reload: bool = False) -> None:
+    open_browser = bool(open_browser and os.environ.get("INKTWIN_NO_BROWSER") != "1")
     if sys.stdout is None or sys.stderr is None:
         log_path = Path(tempfile.gettempdir()) / "inktwin_studio.log"
         log_f = open(log_path, "a", encoding="utf-8", buffering=1)
