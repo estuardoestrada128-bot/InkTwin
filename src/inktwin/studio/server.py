@@ -22,7 +22,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import fitz
 import numpy as np
 
-from .. import LOCAL_PACKS_DIR, __version__
+from .. import LOCAL_PACKS_DIR, TEMPLATES_DIR, __version__
 from ..fontgen import build_opentype_font
 from ..harvest import generate_template_pdf, harvest_template_pdf
 from ..harvest.templates import _CORE_RADICALS
@@ -532,11 +532,14 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
         def log_message(self, format, *args):
             pass
 
-        def _send(self, status: int, data: bytes, ctype: str) -> None:
+        def _send(self, status: int, data: bytes, ctype: str, extra_headers: Optional[Dict[str, str]] = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            if extra_headers:
+                for hk, hv in extra_headers.items():
+                    self.send_header(hk, hv)
             self.end_headers()
             self.wfile.write(data)
 
@@ -554,6 +557,35 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                         self._json(api_state(st, {}))
                     except Exception as exc:
                         self._json({"ok": False, "error": str(exc)}, 500)
+                return
+            if clean == "/api/template/download":
+                from urllib.parse import parse_qs, urlparse
+
+                qs = parse_qs(urlparse(self.path).query)
+                tier = (qs.get("tier") or ["tier1"])[0].lower()
+                if tier not in ("tier1", "tier2"):
+                    self._json({"ok": False, "error": f"invalid static tier: {tier}"}, 400)
+                    return
+                fname = "InkTwin-Tier1.pdf" if tier == "tier1" else "InkTwin-Tier2.pdf"
+                static_pdf = TEMPLATES_DIR / fname
+                with st.lock:
+                    try:
+                        if static_pdf.is_file():
+                            pdf_bytes = static_pdf.read_bytes()
+                        else:
+                            tmp_pdf = st.workdir / fname
+                            if not tmp_pdf.is_file():
+                                generate_template_pdf(tmp_pdf, tier=tier)
+                            pdf_bytes = tmp_pdf.read_bytes()
+                    except Exception as exc:
+                        self._json({"ok": False, "error": str(exc)}, 500)
+                        return
+                self._send(
+                    200,
+                    pdf_bytes,
+                    "application/pdf",
+                    extra_headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+                )
                 return
             if clean.startswith("/files/"):
                 rel = clean[len("/files/"):]

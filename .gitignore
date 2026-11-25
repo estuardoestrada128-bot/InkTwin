@@ -18,6 +18,7 @@ outputs/
 *.png
 *.html
 !assets/katex/**
+!assets/templates/*.pdf
 !src/**/*.html
 !docs/**/*.png
 

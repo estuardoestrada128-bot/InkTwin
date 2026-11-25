@@ -31,10 +31,10 @@
   select, input[type=text], input[type=number], textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
   textarea { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; min-height: 340px; resize: vertical; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; } .row > * { flex: 1; min-width: 110px; }
-  button.btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 14px; cursor: pointer; font: inherit; }
-  button.btn:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  button.primary:hover { color: #fff; filter: brightness(1.08); }
+  button.btn, a.btn { display: inline-block; text-decoration: none; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 7px 14px; cursor: pointer; font: inherit; }
+  button.btn:hover, a.btn:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary, a.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover, a.primary:hover { color: #fff; filter: brightness(1.08); }
   button:disabled { opacity: .5; cursor: wait; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
   .out { margin-top: 10px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 220px; overflow: auto; background: #fafbfc; border-radius: 8px; padding: 8px; }
@@ -101,17 +101,16 @@
   <section id="tab-forge" class="tab">
     <div class="grid g3">
       <div class="card">
-        <h2>1. 生成校准字帖</h2>
-        <p class="desc">打印或导入平板笔记（StarNote / GoodNotes），用深色笔在蓝框内书写，不要遮住四角青色定位块。</p>
-        <label>字帖层级</label>
-        <select id="tpl-tier">
-          <option value="tier1">Tier 1 · 基础多变体采集帖（3 页）</option>
-          <option value="tier2">Tier 2 · 希腊字母与物理符号（1 页）</option>
-          <option value="targeted">靶向微字帖（自定义 / 按排版稿缺字）</option>
-        </select>
-        <label>靶向字符（留空则使用「排版」页 Markdown 中的缺字）</label>
-        <input id="tpl-chars" type="text" placeholder="例如：微积分ℏ∇" />
-        <div class="actions"><button class="btn primary" id="btn-tpl">生成字帖 PDF</button></div>
+        <h2>1. 下载采集字帖</h2>
+        <p class="desc">标准字帖人人相同，直接点下面下载即可；导进平板（StarNote / GoodNotes）用深色笔填满蓝框，导出为矢量 PDF。</p>
+        <div class="actions" style="margin-top:6px">
+          <a class="btn primary" href="/api/template/download?tier=tier1" download="InkTwin-Tier1.pdf">⬇ Tier 1 基础字帖（3 页）</a>
+          <a class="btn" href="/api/template/download?tier=tier2" download="InkTwin-Tier2.pdf">⬇ Tier 2 进阶物理/希腊字母（1 页）</a>
+        </div>
+        <hr style="border:0;border-top:1px dashed var(--line);margin:14px 0 10px" />
+        <label>按需生成补字帖（填想补的字；留空则自动按「排版」页缺字生成）</label>
+        <input id="tpl-chars" type="text" placeholder="例如：微积分ℏ∇（留空按当前作业缺字）" />
+        <div class="actions"><button class="btn" id="btn-tpl">生成并下载补字帖 PDF</button></div>
         <div id="tpl-out" class="files"></div>
         <div id="tpl-thumbs" class="thumbs"></div>
       </div>
@@ -347,9 +346,10 @@ async function loadState() {
 
 /* ---------------- Forge ---------------- */
 $('#btn-tpl').onclick = (e) => busy(e.currentTarget, async () => {
-  const j = await api('/api/template', { tier: $('#tpl-tier').value, chars: $('#tpl-chars').value.trim(), markdown: $('#md').value, pack: $('#opt-pack').value });
-  $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" target="_blank">下载字帖 PDF（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
+  const j = await api('/api/template', { tier: 'targeted', chars: $('#tpl-chars').value.trim(), markdown: $('#md').value, pack: $('#opt-pack').value });
+  $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" download="InkTwin-Targeted.pdf">下载补字帖 PDF（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
   $('#tpl-thumbs').innerHTML = j.previews.map(s => `<img src="${s}">`).join('');
+  const a = document.createElement('a'); a.href = j.pdf_url; a.download = 'InkTwin-Targeted.pdf'; a.click();
 });
 
 $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
@@ -506,10 +506,9 @@ $('#btn-vi-supp').onclick = () => {
   if (!S.packInspect) { toast('请先加载字库体检', true); return; }
   const low = S.packInspect.pack.low_variant_non_cjk || [];
   if (!low.length) { toast('当前字库的字母与符号都已有多个变体！'); return; }
-  $('#tpl-tier').value = 'targeted';
   $('#tpl-chars').value = low.join('');
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  toast(`已填入 ${low.length} 个单变体符号到「靶向微字帖」，点击「生成字帖 PDF」即可下载`);
+  toast(`已填入 ${low.length} 个单变体符号，点击「生成并下载补字帖 PDF」即可下载`);
 };
 
 /* ---------------- Compose ---------------- */

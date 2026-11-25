@@ -52,7 +52,12 @@ def run_phase5_tests() -> None:
             pf = _http_post_json(base_url + "api/preflight", {"markdown": md, "pack": "demo_sample"})
             assert pf["ok"] and "cjk" in pf["report"]
 
-            # 3. POST /api/template & download PDF
+            # 3. GET /api/template/download (static Tier 1 & Tier 2) + POST /api/template (targeted)
+            t1_bytes = _http_get(base_url + "api/template/download?tier=tier1")
+            t2_bytes = _http_get(base_url + "api/template/download?tier=tier2")
+            assert t1_bytes.startswith(b"%PDF") and len(t1_bytes) > 5000
+            assert t2_bytes.startswith(b"%PDF") and len(t2_bytes) > 3000
+
             tpl = _http_post_json(base_url + "api/template", {"tier": "targeted", "chars": "01xy"})
             assert tpl["ok"] and tpl["result"]["pages"] == 1
             tpl_bytes = _http_get(base_url.rstrip("/") + tpl["pdf_url"])

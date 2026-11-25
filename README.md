@@ -38,7 +38,7 @@
 **第一步只需要做一次，以后每次写作业只跑第二步和第三步。**
 
 ### 第 1 步：采集一次你的字迹
-1. **出字帖**：让程序生成 3 页带格子的空白字帖 PDF（数字和常用字母、符号自带 2～3 格多变体，加上基本笔画、24 个常用偏旁和 80 个高频理科汉字）。
+1. **直接下载现成字帖**：标准字帖人人一样，不用自己生成，直接拿现成的就行——[**Tier 1 基础字帖（3 页）**](assets/templates/InkTwin-Tier1.pdf)（数字和常用字母、符号自带 2～3 格多变体，加基本笔画、24 个偏旁和 80 个高频理科汉字），需要更多物理/希腊字母可以顺手下 [**Tier 2 进阶字帖（1 页）**](assets/templates/InkTwin-Tier2.pdf)。
 2. **平板抄一遍**：把字帖导进平板（StarNote / GoodNotes / Notability 等），像平时一样写满，导出成**矢量 PDF**（注意别导出成图片）。
 3. **自动抠字建库**：把填好的 PDF 丢回程序，它按格子把你的每一笔抠出来，打包成一个专属的“笔迹包”（`.hwpack`）。建完库还能直接在 `inktwin studio` 的「字库变体体检」里逐个看效果，写歪或写糊的变体点一下就能删掉。
    - 如果想在 Word / WPS 里直接打出自己的字，顺手就能把这个笔迹包变成 `.ttf` / `.otf` 字体装进电脑，连打相同字（比如 `000`、`aaa`）还会自动换不同写法。
@@ -90,8 +90,7 @@ inktwin studio
 # 1. 先用自带演示包跑一篇作业看看效果
 inktwin render homework.md -o out.pdf --pack demo_sample --paper ruled8 --ink blue --mood neat
 
-# 2. 生成 3 页多变体字帖 -> 平板填完导出矢量 PDF -> 建自己的字库 -> 编电脑字体
-inktwin template --tier tier1 -o my_tier1.pdf
+# 2. 直接下载 assets/templates/InkTwin-Tier1.pdf（平板填完导出矢量 PDF）-> 建库 -> 编电脑字体
 inktwin harvest filled_tier1.pdf -o packs/local/my_hand.hwpack --id my_hand
 inktwin fontbuild --pack my_hand --format ttf -o InkTwin-MyHand.ttf
 
