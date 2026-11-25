@@ -12,6 +12,7 @@ import json
 import os
 import random
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -885,6 +886,17 @@ def _shutdown_existing(port: int) -> None:
         pass
 
 
+def _wait_port_free(port: int, timeout: float = 4.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            if sock.connect_ex(("127.0.0.1", port)) != 0:
+                return True
+        time.sleep(0.15)
+    return False
+
+
 def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: bool) -> None:
     src_root = Path(__file__).resolve().parents[1]
     stable_wd = Path(workdir).resolve() if workdir else (Path(tempfile.gettempdir()) / "inktwin_studio_dev")
@@ -894,7 +906,7 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
     if _check_existing_studio(target_port):
         print(f"[DevReload] Stopping existing Studio on 127.0.0.1:{target_port}...", flush=True)
         _shutdown_existing(target_port)
-        time.sleep(0.6)
+        _wait_port_free(target_port, timeout=4.0)
 
     child_env = dict(os.environ)
     child_env["INKTWIN_RELOAD_CHILD"] = "1"
@@ -957,6 +969,7 @@ def _serve_studio_reloader(workdir: Optional[Path], port: int, open_browser: boo
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait()
+                _wait_port_free(target_port, timeout=3.0)
                 proc = _spawn()
     except KeyboardInterrupt:
         print("\n[DevReload] Stopping...", flush=True)
@@ -977,21 +990,33 @@ def serve_studio(workdir: Optional[Path] = None, port: int = 0, open_browser: bo
             sys.stdout = log_f
         if sys.stderr is None:
             sys.stderr = log_f
-    if reload and os.environ.get("INKTWIN_RELOAD_CHILD") != "1":
+    is_reload_child = os.environ.get("INKTWIN_RELOAD_CHILD") == "1"
+    if reload and not is_reload_child:
         _serve_studio_reloader(workdir=workdir, port=port, open_browser=open_browser)
         return
-    if port and _check_existing_studio(port):
+    if not is_reload_child and port and _check_existing_studio(port):
         url = f"http://127.0.0.1:{port}/"
         print(json.dumps({"ok": True, "url": url, "port": port, "reused": True}, ensure_ascii=False))
         if open_browser:
             webbrowser.open(url)
         return
     dev_mode = bool(reload or os.environ.get("INKTWIN_DEV_RELOAD") == "1")
-    try:
-        server, actual, url, st = start_studio_server(workdir, port, dev_reload=dev_mode)
-    except OSError:
-        # Fallback to any available ephemeral port if requested port is occupied by another app
-        server, actual, url, st = start_studio_server(workdir, 0, dev_reload=dev_mode)
+    server = None
+    if is_reload_child and port:
+        for attempt in range(12):
+            try:
+                server, actual, url, st = start_studio_server(workdir, port, dev_reload=dev_mode)
+                break
+            except OSError:
+                if attempt == 11:
+                    raise
+                time.sleep(0.25)
+    else:
+        try:
+            server, actual, url, st = start_studio_server(workdir, port, dev_reload=dev_mode)
+        except OSError:
+            # Fallback to any available ephemeral port if requested port is occupied by another app
+            server, actual, url, st = start_studio_server(workdir, 0, dev_reload=dev_mode)
     print(json.dumps({"ok": True, "url": url, "port": actual, "workdir": str(st.workdir)}, ensure_ascii=False))
     if open_browser:
         webbrowser.open(url)
