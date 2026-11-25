@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>InkTwin Scene Editor (Offline)</title>
+<style>
+  :root {
+    --bg: #17191e;
+    --panel: #22262e;
+    --border: #343a46;
+    --text: #e6e9ef;
+    --muted: #98a2b3;
+    --accent: #4c8dff;
+    --danger: #e24c4b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .brand { font-weight: 700; color: #fff; margin-right: 6px; letter-spacing: 0.3px; }
+  .sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+  button {
+    background: #2c313c;
+    color: var(--text);
+    border: 1px solid #3c4352;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  button:hover { background: #373e4c; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #3b7be8; }
+  button.active { outline: 2px solid var(--accent); }
+  .swatch {
+    width: 18px; height: 18px; border-radius: 50%; padding: 0; border: 2px solid #fff3;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  #stage-wrap {
+    flex: 1;
+    overflow: auto;
+    padding: 22px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    position: relative;
+  }
+  #paper-frame {
+    position: relative;
+    background: #fff;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+    user-select: none;
+  }
+  #paper-frame svg {
+    display: block;
+    width: 794px;
+    height: auto;
+  }
+  .sc-glyph { cursor: grab; }
+  .sc-glyph.selected path {
+    filter: drop-shadow(0 0 1.4px rgba(76, 141, 255, 0.95));
+  }
+  #marquee {
+    position: fixed;
+    border: 1.5px dashed var(--accent);
+    background: rgba(76, 141, 255, 0.14);
+    pointer-events: none;
+    display: none;
+    z-index: 40;
+  }
+  #overlay-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  aside {
+    width: 280px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    padding: 12px 14px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  aside h3 { margin: 8px 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  .kv { display: flex; justify-content: space-between; margin: 3px 0; }
+  .anom-item {
+    background: #1a1d24;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+  }
+  .anom-item:hover { border-color: var(--accent); }
+  .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px;
+    background: rgba(226, 76, 75, 0.18); color: #ff8a89; margin-right: 4px;
+  }
+  .kbd { background: #14161b; border: 1px solid #3c4352; border-radius: 4px; padding: 0 5px; font-size: 11px; }
+  #toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: #101216; border: 1px solid var(--accent); color: #fff;
+    padding: 7px 14px; border-radius: 8px; font-size: 12px; display: none; z-index: 60;
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">InkTwin Scene Editor</span>
+  <button id="btn-prev">&lt;</button>
+  <span id="page-label">Page 1 / 1</span>
+  <button id="btn-next">&gt;</button>
+  <span class="sep"></span>
+  <button id="btn-reroll" title="Switch real handwriting variant (R)">Reroll Variant (R)</button>
+  <button id="btn-tighten">Tighten Gaps</button>
+  <button id="btn-drift">Natural Drift</button>
+  <button id="btn-hide" title="Hide selected glyphs (Delete)">Hide (Del)</button>
+  <span class="sep"></span>
+  <span>Ink:</span>
+  <button class="swatch" data-color="black" style="background:#111318" title="Black"></button>
+  <button class="swatch" data-color="blue" style="background:#19378a" title="Blue"></button>
+  <button class="swatch" data-color="darkblue" style="background:#13244b" title="DarkBlue"></button>
+  <button class="swatch" data-color="red" style="background:#c6332f" title="Red Correction"></button>
+  <span class="sep"></span>
+  <button id="btn-inspect">Inspect Overlay</button>
+  <button id="btn-undo" title="Ctrl+Z">Undo</button>
+  <button id="btn-reset">Reset</button>
+  <span class="sep"></span>
+  <button class="primary" id="btn-export-pdf">Export PDF</button>
+  <button id="btn-export-png">Export Transparent PNG</button>
+</header>
+
+<main>
+  <div id="stage-wrap">
+    <div id="paper-frame">
+      <div id="svg-host"></div>
+      <svg id="overlay-layer"></svg>
+    </div>
+  </div>
+  <aside>
+    <h3>Scene Status</h3>
+    <div class="kv"><span>Pack</span><strong id="st-pack">-</strong></div>
+    <div class="kv"><span>Paper</span><strong id="st-paper">-</strong></div>
+    <div class="kv"><span>Edits</span><strong id="st-edits">0</strong></div>
+    <div class="kv"><span>Selected</span><strong id="st-sel">0</strong></div>
+
+    <h3>Shortcuts</h3>
+    <div style="color:var(--muted)">
+      Click / Drag box: select glyphs<br/>
+      Double-click or <span class="kbd">L</span>: select line<br/>
+      Drag or <span class="kbd">Arrows</span>: nudge (<span class="kbd">Shift</span> ×5)<br/>
+      <span class="kbd">R</span>: reroll real variant<br/>
+      <span class="kbd">+</span>/<span class="kbd">-</span>: scale · <span class="kbd">[</span>/<span class="kbd">]</span>: rotate<br/>
+      <span class="kbd">Ctrl+Z</span>: undo batch
+    </div>
+
+    <h3>Inspector Anomalies</h3>
+    <div id="anom-list"></div>
+  </aside>
+</main>
+<div id="marquee"></div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  let currentPage = 0;
+  let totalPages = 1;
+  let selected = new Set();
+  let inspectData = null;
+  let showOverlay = true;
+  let pageWidthMm = 210;
+  let pageHeightMm = 297;
+
+  const svgHost = document.getElementById('svg-host');
+  const overlayLayer = document.getElementById('overlay-layer');
+  const paperFrame = document.getElementById('paper-frame');
+  const marqueeEl = document.getElementById('marquee');
+
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 2400);
+  }
+
+  async function api(url, method = 'GET', body = null) {
+    const opts = { method, headers: {} };
+    if (body !== null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    return await r.json();
+  }
+
+  function updateSelectionUI() {
+    document.querySelectorAll('.sc-glyph').forEach(g => {
+      g.classList.toggle('selected', selected.has(g.id));
+    });
+    document.getElementById('st-sel').textContent = String(selected.size);
+  }
+
+  function renderAnomalies() {
+    const list = document.getElementById('anom-list');
+    list.innerHTML = '';
+    overlayLayer.setAttribute('viewBox', `0 0 ${pageWidthMm} ${pageHeightMm}`);
+    overlayLayer.innerHTML = '';
+
+    const anoms = (inspectData && inspectData.anomalies) ? inspectData.anomalies : [];
+    if (!anoms.length) {
+      list.innerHTML = '<div style="color:#6ce59f">0 anomalies detected.</div>';
+      return;
+    }
+    anoms.slice(0, 40).forEach(a => {
+      const div = document.createElement('div');
+      div.className = 'anom-item';
+      div.innerHTML = `<span class="badge">${a.kind}</span> <b>${a.chars || ''}</b> <span style="color:#98a2b3">(${a.line || ''})</span>`;
+      div.onclick = () => {
+        if (typeof a.page === 'number' && a.page !== currentPage) {
+          currentPage = a.page;
+          refreshPage();
+        }
+        selected = new Set(a.ids || []);
+        updateSelectionUI();
+      };
+      list.appendChild(div);
+
+      if (showOverlay && a.page === currentPage && a.ids) {
+        a.ids.forEach(gid => {
+          const gel = document.getElementById(gid);
+          if (!gel) return;
+          const bb = gel.getBBox();
+          const rc = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          // Approximate highlight around transformed node using getBoundingClientRect mapped to paperFrame
+          const gr = gel.getBoundingClientRect();
+          const pr = paperFrame.getBoundingClientRect();
+          const mmPerPx = pageWidthMm / Math.max(1, pr.width);
+          rc.setAttribute('x', ((gr.left - pr.left) * mmPerPx - 0.6).toFixed(2));
+          rc.setAttribute('y', ((gr.top - pr.top) * mmPerPx - 0.6).toFixed(2));
+          rc.setAttribute('width', (gr.width * mmPerPx + 1.2).toFixed(2));
+          rc.setAttribute('height', (gr.height * mmPerPx + 1.2).toFixed(2));
+          rc.setAttribute('fill', 'rgba(226, 76, 75, 0.14)');
+          rc.setAttribute('stroke', '#e24c4b');
+          rc.setAttribute('stroke-width', '0.35');
+          overlayLayer.appendChild(rc);
+        });
+      }
+    });
+  }
+
+  async function refreshState() {
+    const st = await api('/api/state');
+    totalPages = Math.max(1, st.pages || 1);
+    pageWidthMm = st.paper_width_mm || 210;
+    pageHeightMm = st.paper_height_mm || 297;
+    document.getElementById('st-pack').textContent = st.pack_id || '-';
+    document.getElementById('st-paper').textContent = st.paper_id || '-';
+    document.getElementById('st-edits').textContent = String(st.edits_count || 0);
+    inspectData = st.inspect;
+    document.getElementById('page-label').textContent = `Page ${currentPage + 1} / ${totalPages}`;
+    renderAnomalies();
+  }
+
+  async function refreshPage() {
+    const data = await api(`/api/page_svg/${currentPage}`);
+    svgHost.innerHTML = data.svg;
+    updateSelectionUI();
+    await refreshState();
+  }
+
+  async function sendOp(payload) {
+    const res = await api('/api/ops', 'POST', payload);
+    if (!res.ok) {
+      toast(res.error || 'Op failed');
+      return;
+    }
+    await refreshPage();
+  }
+
+  // Pointer selection & drag-to-move
+  let dragMode = null;
+  let startX = 0, startY = 0;
+
+  paperFrame.addEventListener('mousedown', (e) => {
+    const gEl = e.target.closest('.sc-glyph');
+    startX = e.clientX;
+    startY = e.clientY;
+    if (gEl) {
+      if (e.shiftKey) {
+        if (selected.has(gEl.id)) selected.delete(gEl.id); else selected.add(gEl.id);
+      } else if (!selected.has(gEl.id)) {
+        selected = new Set([gEl.id]);
+      }
+      updateSelectionUI();
+      dragMode = 'move';
+    } else {
+      if (!e.shiftKey) selected.clear();
+      updateSelectionUI();
+      dragMode = 'marquee';
+      marqueeEl.style.left = startX + 'px';
+      marqueeEl.style.top = startY + 'px';
+      marqueeEl.style.width = '0px';
+      marqueeEl.style.height = '0px';
+      marqueeEl.style.display = 'block';
+    }
+  });
+
+  paperFrame.addEventListener('dblclick', (e) => {
+    const gEl = e.target.closest('.sc-glyph');
+    if (!gEl) return;
+    const lid = gEl.getAttribute('data-line');
+    if (!lid) return;
+    document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
+    updateSelectionUI();
+    toast(`Selected line ${lid} (${selected.size} glyphs)`);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragMode) return;
+    if (dragMode === 'marquee') {
+      const x = Math.min(startX, e.clientX), y = Math.min(startY, e.clientY);
+      const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+      marqueeEl.style.left = x + 'px'; marqueeEl.style.top = y + 'px';
+      marqueeEl.style.width = w + 'px'; marqueeEl.style.height = h + 'px';
+    }
+  });
+
+  window.addEventListener('mouseup', async (e) => {
+    if (!dragMode) return;
+    const mode = dragMode;
+    dragMode = null;
+    if (mode === 'marquee') {
+      marqueeEl.style.display = 'none';
+      const x0 = Math.min(startX, e.clientX), y0 = Math.min(startY, e.clientY);
+      const x1 = Math.max(startX, e.clientX), y1 = Math.max(startY, e.clientY);
+      if (x1 - x0 > 4 || y1 - y0 > 4) {
+        document.querySelectorAll('.sc-glyph').forEach(g => {
+          const r = g.getBoundingClientRect();
+          if (r.right >= x0 && r.left <= x1 && r.bottom >= y0 && r.top <= y1) {
+            selected.add(g.id);
+          }
+        });
+        updateSelectionUI();
+      }
+    } else if (mode === 'move' && selected.size > 0) {
+      const pr = paperFrame.getBoundingClientRect();
+      const mmPerPx = pageWidthMm / Math.max(1, pr.width);
+      const dxMm = (e.clientX - startX) * mmPerPx;
+      const dyMm = (e.clientY - startY) * mmPerPx;
+      if (Math.hypot(dxMm, dyMm) > 0.25) {
+        await sendOp({ op: 'move', ids: Array.from(selected), dx: dxMm, dy: dyMm });
+      }
+    }
+  });
+
+  window.addEventListener('keydown', async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      await api('/api/undo', 'POST', {});
+      await refreshPage();
+      toast('Undid last batch');
+      return;
+    }
+    if (!selected.size) return;
+    const step = e.shiftKey ? 1.0 : 0.25;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: -step, dy: 0 }); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: step, dy: 0 }); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: 0, dy: -step }); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); await sendOp({ op: 'move', ids: Array.from(selected), dx: 0, dy: step }); }
+    else if (e.key.toLowerCase() === 'r') { await sendOp({ op: 'reroll', ids: Array.from(selected) }); toast('Rerolled variant'); }
+    else if (e.key === '+' || e.key === '=') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }); }
+    else if (e.key === '-') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }); }
+    else if (e.key === ']') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }); }
+    else if (e.key === '[') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); }
+  });
+
+  document.getElementById('btn-prev').onclick = () => { if (currentPage > 0) { currentPage--; selected.clear(); refreshPage(); } };
+  document.getElementById('btn-next').onclick = () => { if (currentPage < totalPages - 1) { currentPage++; selected.clear(); refreshPage(); } };
+  document.getElementById('btn-reroll').onclick = () => selected.size ? sendOp({ op: 'reroll', ids: Array.from(selected) }) : toast('Select glyph(s) first');
+  document.getElementById('btn-hide').onclick = () => { if (selected.size) { sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); } };
+  document.getElementById('btn-tighten').onclick = () => sendOp({ action: 'tighten' });
+  document.getElementById('btn-drift').onclick = () => sendOp({ action: 'drift' });
+  document.getElementById('btn-inspect').onclick = (e) => { showOverlay = !showOverlay; e.target.classList.toggle('active', showOverlay); renderAnomalies(); };
+  document.getElementById('btn-undo').onclick = async () => { await api('/api/undo', 'POST', {}); await refreshPage(); };
+  document.getElementById('btn-reset').onclick = async () => { await api('/api/reset', 'POST', {}); selected.clear(); await refreshPage(); };
+  document.querySelectorAll('.swatch').forEach(btn => {
+    btn.onclick = () => selected.size ? sendOp({ op: 'pen', ids: Array.from(selected), color: btn.dataset.color }) : toast('Select glyph(s) or double-click a line first');
+  });
+  document.getElementById('btn-export-pdf').onclick = async () => {
+    const res = await api('/api/export', 'POST', { format: 'pdf' });
+    toast(`Exported PDF in ${res.elapsed_ms} ms -> ${res.outputs[0]}`);
+  };
+  document.getElementById('btn-export-png').onclick = async () => {
+    const res = await api('/api/export', 'POST', { format: 'png', transparent: true });
+    toast(`Exported transparent PNG in ${res.elapsed_ms} ms`);
+  };
+
+  document.getElementById('btn-inspect').classList.add('active');
+  refreshPage();
+})();
+</script>
+</body>
+</html>
+

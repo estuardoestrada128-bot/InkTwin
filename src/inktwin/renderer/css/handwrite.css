@@ -1,0 +1,303 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--ink-primary, #111318);
+  font-size: var(--hw-font-size, 12pt);
+  line-height: 1.56;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Worksheet 原题印刷层 ===== */
+.ws-header { text-align: center; margin-bottom: 10px; }
+.ws-title {
+  margin: 0 0 6px 0;
+  font-family: "SimHei", "Microsoft YaHei", "Heiti SC", sans-serif;
+  font-size: 17.5pt;
+  font-weight: 700;
+  color: #000000;
+  letter-spacing: 0.6px;
+}
+.ws-meta {
+  font-family: "SimSun", "NSimSun", "Songti SC", serif;
+  font-size: 10.5pt;
+  color: #1f1f1f;
+  margin-bottom: 9px;
+  letter-spacing: 0.3px;
+}
+.ws-divider { border: none; border-top: 1.5px solid #222222; margin: 0 0 8px 0; }
+.ws-question { margin-bottom: 12px; }
+.ws-prompt {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  break-after: avoid;
+  page-break-after: avoid;
+  margin-bottom: 5px;
+}
+.ws-qtitle {
+  font-family: "SimHei", "Microsoft YaHei", sans-serif;
+  font-size: 11.2pt;
+  font-weight: 700;
+  color: #000000;
+  margin: 0 0 4px 0;
+  line-height: 1.4;
+}
+.ws-qtext {
+  font-family: "SimSun", "Microsoft YaHei", serif;
+  font-size: 9.8pt;
+  color: #1a1a1a;
+  margin: 2px 0 4px 4px;
+}
+.ws-qimg-wrap { margin: 2px 0 3px 2px; }
+.ws-qimg { display: block; max-width: 100%; height: auto; }
+
+/* ===== Standalone 独立稿纸顶栏 ===== */
+.st-grid-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+.st-grid-tag {
+  font-family: 'HW-Latin', 'HW-CJK', cursive;
+  font-size: 25pt;
+  color: var(--ink-red, #c6332f);
+  line-height: 1.05;
+  transform: rotate(-2.2deg);
+  display: inline-block;
+}
+.st-grid-meta {
+  font-family: 'HW-CJK', 'HW-CJK-FB', cursive;
+  font-size: 11.5pt;
+  color: var(--ink-secondary, #20242d);
+}
+.st-ruled-header {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  font-family: "SimSun", serif;
+  font-size: 8.5pt;
+  color: rgba(110, 140, 178, 0.9);
+  margin: 0 4px 10px 0;
+}
+.st-header {
+  margin-bottom: 12px;
+  padding-bottom: 5px;
+  border-bottom: 1px dashed rgba(60, 65, 78, 0.25);
+}
+.st-title { font-family: 'HW-CJK', 'HW-CJK-FB', cursive; font-size: 16.5pt; color: var(--ink-primary); }
+.st-meta { font-family: 'HW-CJK', 'HW-CJK-FB', cursive; font-size: 11.5pt; color: var(--ink-secondary); margin-top: 2px; }
+.st-question { margin-bottom: 13px; }
+.st-qnum {
+  display: block;
+  width: fit-content;
+  font-family: 'HW-Latin', 'HW-CJK', cursive;
+  font-size: var(--hw-qnum-size, 13.4pt);
+  color: var(--ink-primary);
+  margin-right: 6px;
+  margin-bottom: 1px;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* ===== 仿手写解答层 ===== */
+.hw-answer {
+  font-family: 'HW-CJK', 'HW-CJK-FB', 'HW-Latin', cursive, sans-serif;
+  font-size: var(--hw-font-size, 12pt);
+  font-weight: 300;
+  color: var(--ink-primary);
+  padding-left: 10px;
+  padding-right: 6px;
+  line-height: 1.56;
+}
+.hw-answer p {
+  margin: 2px 0 4px 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.hw-answer strong, .hw-answer b { font-weight: 300; color: var(--ink-primary); }
+.hw-answer ul, .hw-answer ol { margin: 2px 0 4px 0; padding-left: 16px; }
+.hw-answer li { margin: 2px 0 4px 0; break-inside: avoid; page-break-inside: avoid; }
+.hw-answer ul { list-style-type: none; padding-left: 14px; }
+.hw-answer ul > li::before { content: none; }
+.hw-bullet-svg { display: inline-block; vertical-align: middle; margin: 0 5px 1px -10px; }
+.hw-lead { margin-right: 3px; break-after: avoid; page-break-after: avoid; }
+.hw-subhead { margin: 3px 0 1px 0; break-after: avoid; page-break-after: avoid; }
+.hw-sublabel { display: inline-block; margin-right: 6px; font-family: 'HW-Latin', 'HW-CJK', cursive; }
+.hw-eq-gap { display: inline-block; width: 2.1em; }
+.hw-chain-cont { margin: 1px 0 4px 24px; break-inside: avoid; page-break-inside: avoid; }
+.hw-nowrap { display: inline-block; white-space: nowrap; }
+.hw-red { color: var(--ink-red, #c6332f) !important; }
+.hw-red .katex, .hw-red svg { color: var(--ink-red, #c6332f) !important; }
+
+.hw-ch {
+  display: inline-block;
+  white-space: pre;
+  transform-origin: center bottom;
+  font-size: 1.04em;
+  line-height: 1.12;
+  filter: var(--hw-wobble-filter, none);
+}
+.hw-ch.hw-cjk {
+  font-family: 'HW-CJK', 'HW-CJK-FB', cursive, sans-serif !important;
+  font-size: 1.56em;
+  line-height: 1.06;
+  vertical-align: -0.05em;
+}
+.hw-ch.hw-cjk-punct {
+  font-family: 'HW-CJK', 'HW-CJK-FB', cursive, sans-serif !important;
+  font-size: 1.248em;
+  line-height: 1.06;
+  vertical-align: -0.02em;
+}
+.hw-answer .katex .hw-katex-cjk {
+  font-family: 'HW-CJK', 'HW-CJK-FB', cursive, sans-serif !important;
+  font-size: 1.466em !important;
+  font-weight: 400 !important;
+  line-height: 1.04;
+  vertical-align: -0.05em;
+  display: inline-block;
+  transform-origin: center bottom;
+}
+
+/* 个人矢量手写字形 SVG 节点 */
+svg.pg-svg,
+.katex svg.pg-svg,
+.hw-answer .katex svg.pg-svg {
+  position: static !important;
+  display: inline-block !important;
+  max-width: none !important;
+  overflow: visible !important;
+  color: inherit;
+  transform-origin: center center;
+}
+svg.hw-hand-svg,
+.katex svg.hw-hand-svg,
+.hw-answer .katex svg.hw-hand-svg {
+  position: absolute !important;
+  display: block !important;
+  max-width: none !important;
+  overflow: visible !important;
+  pointer-events: none;
+  color: inherit;
+}
+.katex svg.hw-hand-svg:not(.hw-fill-svg) path,
+.hw-answer .katex svg.hw-hand-svg:not(.hw-fill-svg) path,
+svg.pg-svg.pg-stroke path:not(.pg-rad-fill),
+.katex svg.pg-svg.pg-stroke path:not(.pg-rad-fill),
+.hw-answer .katex svg.pg-svg.pg-stroke path:not(.pg-rad-fill) {
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  vector-effect: non-scaling-stroke;
+}
+svg.pg-svg path.pg-rad-fill,
+.katex svg.pg-svg path.pg-rad-fill,
+.hw-answer .katex svg.pg-svg path.pg-rad-fill {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+  stroke-width: 0.06px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  vector-effect: non-scaling-stroke !important;
+  paint-order: stroke fill;
+}
+.katex svg.hw-fill-svg path,
+.hw-answer .katex svg.hw-fill-svg path {
+  fill: currentColor !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  vector-effect: non-scaling-stroke;
+}
+.katex svg.pg-svg:not(.pg-stroke) path,
+.hw-answer .katex svg.pg-svg:not(.pg-stroke) path {
+  fill: currentColor !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  vector-effect: non-scaling-stroke;
+}
+svg.pg-boost path,
+.katex svg.pg-boost path,
+.hw-answer .katex svg.pg-boost path {
+  fill: currentColor !important;
+  stroke: currentColor !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  vector-effect: non-scaling-stroke !important;
+  paint-order: stroke fill;
+}
+
+/* ===== KaTeX 仿手写公式重构 ===== */
+.hw-math-display {
+  display: block;
+  margin: 3px 0 5px 6px;
+  text-align: left !important;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  overflow: visible;
+}
+.hw-math-display .katex-display { margin: 0 !important; text-align: left !important; }
+.hw-math-display .katex-display > .katex { text-align: left !important; }
+.hw-math-inline { display: inline-block; vertical-align: baseline; margin: 0 2px; }
+
+.hw-answer .katex { font-size: 1.06em; color: var(--ink-primary); line-height: 1.38; }
+.hw-answer .katex .mathnormal,
+.hw-answer .katex .mathit {
+  font-family: 'HW-Latin', 'HW-CJK', 'HW-CJK-FB', 'KaTeX_Math', serif !important;
+  font-size: var(--hw-en-scale, 1.24em);
+  font-weight: var(--hw-en-weight, 400) !important;
+  font-style: normal !important;
+  -webkit-text-stroke: 0.26px currentColor;
+  display: inline-block;
+  transform: skewX(var(--hw-en-slant, -3.5deg));
+}
+.hw-answer .katex .mathrm,
+.hw-answer .katex .text,
+.hw-answer .katex .mtext,
+.hw-answer .katex .mord.text,
+.hw-answer .katex .mop:not(.op-symbol),
+.hw-answer .katex .mord:not(.mathnormal):not(.mathit):not(.amsrm):not(.mathbb):not(.mathcal):not(.mathfrak):not(.op-symbol):not(.delimsizing) {
+  font-family: 'HW-Latin', 'HW-CJK', 'HW-CJK-FB', 'KaTeX_Main', serif !important;
+  font-weight: 300 !important;
+  -webkit-text-stroke: 0.24px currentColor;
+}
+.hw-answer .katex .mbin,
+.hw-answer .katex .mrel,
+.hw-answer .katex .mpunct,
+.hw-answer .katex .mopen:not(.delimsizing),
+.hw-answer .katex .mclose:not(.delimsizing) {
+  font-family: 'HW-Latin', 'HW-CJK', 'HW-CJK-FB', 'KaTeX_Main', 'KaTeX_AMS', serif !important;
+  font-weight: 300 !important;
+  -webkit-text-stroke: 0.24px currentColor;
+}
+.hw-answer .katex svg.pg-svg,
+.hw-answer .katex svg.hw-hand-svg { -webkit-text-stroke: 0 !important; }
+.hw-answer .katex .mfrac .frac-line { border-bottom-width: 0.045em; border-color: var(--ink-primary); }
+
+.hw-table-wrap {
+  position: relative;
+  display: inline-block;
+  margin: 5px 0 7px 8px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.hw-answer table {
+  border-collapse: collapse;
+  border: none;
+  margin: 0;
+  font-size: 0.94em;
+}
+.hw-answer th, .hw-answer td {
+  border: none;
+  padding: 4px 12px;
+  text-align: center;
+  vertical-align: middle;
+  font-weight: 300;
+}
+.hw-sketch-wrap {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+

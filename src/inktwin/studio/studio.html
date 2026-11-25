@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>InkTwin Studio</title>
+<style>
+  :root {
+    --bg: #f4f5f8; --panel: #ffffff; --ink: #1d2230; --muted: #6b7385; --line: #e2e5ec;
+    --accent: #2f5bd3; --accent-soft: #e8eefc; --ok: #1f8a4c; --warn: #c27a12; --bad: #c6332f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 22px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  header h1 small { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; }
+  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--accent-soft); color: var(--accent); }
+  .pill.ok { background: #e4f4ea; color: var(--ok); } .pill.bad { background: #fbe7e6; color: var(--bad); }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav button { border: 0; background: transparent; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--muted); }
+  nav button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  main { padding: 18px 22px; }
+  .tab { display: none; } .tab.active { display: block; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr); }
+  .g3 { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .card p.desc { color: var(--muted); margin: -4px 0 12px; font-size: 12.5px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 3px; }
+  select, input[type=text], input[type=number], textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+  textarea { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; min-height: 340px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; } .row > * { flex: 1; min-width: 110px; }
+  button.btn { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 7px 14px; cursor: pointer; font: inherit; }
+  button.btn:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.primary:hover { color: #fff; filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: wait; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .out { margin-top: 10px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 220px; overflow: auto; background: #fafbfc; border-radius: 8px; padding: 8px; }
+  .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .thumbs img { width: 140px; border: 1px solid var(--line); border-radius: 6px; }
+  .pages { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .pages img { width: 100%; max-width: 760px; box-shadow: 0 2px 14px rgba(20,30,60,.12); border-radius: 4px; background: #fff; }
+  .lay-pages { display: flex; gap: 14px; flex-wrap: wrap; }
+  .lay-page { position: relative; width: 330px; border: 1px solid var(--line); border-radius: 4px; background: #fff; user-select: none; }
+  .lay-page img { width: 100%; display: block; pointer-events: none; }
+  .lay-page .phead { position: absolute; top: -22px; left: 0; font-size: 12px; color: var(--muted); }
+  .lay-box { position: absolute; border: 1.5px dashed var(--accent); background: rgba(47,91,211,.08); cursor: move; border-radius: 3px; }
+  .lay-box .lb { position: absolute; left: 3px; top: 2px; font-size: 11px; background: var(--accent); color: #fff; border-radius: 4px; padding: 0 5px; cursor: pointer; }
+  .lay-box .del { position: absolute; right: 3px; top: 1px; font-size: 13px; color: var(--bad); cursor: pointer; font-weight: 700; }
+  .lay-box .rs { position: absolute; right: -4px; bottom: -4px; width: 10px; height: 10px; background: var(--accent); border-radius: 2px; cursor: nwse-resize; }
+  .stat { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+  .stat b.ok { color: var(--ok); } .stat b.bad { color: var(--bad); } .stat b.warn { color: var(--warn); }
+  .files a { display: block; font-size: 12.5px; margin: 3px 0; color: var(--accent); }
+  .toast { position: fixed; right: 20px; bottom: 20px; background: #1d2230; color: #fff; padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .25s; max-width: 460px; z-index: 50; }
+  .toast.show { opacity: .95; } .toast.err { background: var(--bad); }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .empty { color: var(--muted); text-align: center; padding: 60px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>InkTwin Studio <small id="ver"></small></h1>
+  <span id="doctor" class="pill">检查环境…</span>
+  <nav>
+    <button data-tab="forge">① 字库工坊 Forge</button>
+    <button data-tab="compose" class="active">② 排版 Compose</button>
+    <button data-tab="preview">③ 预览与微调 Preview</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ========== Forge ========== -->
+  <section id="tab-forge" class="tab">
+    <div class="grid g3">
+      <div class="card">
+        <h2>1. 生成校准字帖</h2>
+        <p class="desc">打印或导入平板笔记（StarNote / GoodNotes），用深色笔在蓝框内书写，不要遮住四角青色定位块。</p>
+        <label>字帖层级</label>
+        <select id="tpl-tier">
+          <option value="tier1">Tier 1 · 极速启动帖（2 页）</option>
+          <option value="tier2">Tier 2 · 希腊字母与物理符号（1 页）</option>
+          <option value="targeted">靶向微字帖（自定义 / 按排版稿缺字）</option>
+        </select>
+        <label>靶向字符（留空则使用「排版」页 Markdown 中的缺字）</label>
+        <input id="tpl-chars" type="text" placeholder="例如：微积分ℏ∇" />
+        <div class="actions"><button class="btn primary" id="btn-tpl">生成字帖 PDF</button></div>
+        <div id="tpl-out" class="files"></div>
+        <div id="tpl-thumbs" class="thumbs"></div>
+      </div>
+      <div class="card">
+        <h2>2. 导入写好的字帖 → 建库</h2>
+        <p class="desc">零 OCR 矢量提取：靶标对齐 → 子路径切分 → EDT 0.74px 保压感校准，保存到 packs/local/（不会进入 git）。</p>
+        <label>已填写字帖 PDF</label>
+        <input id="hv-file" type="file" accept="application/pdf" />
+        <div class="row">
+          <div><label>字库 ID</label><input id="hv-id" type="text" value="my_hand" /></div>
+          <div><label>合并到已有字库（可选）</label><select id="hv-merge"><option value="">（新建）</option></select></div>
+        </div>
+        <div class="actions"><button class="btn primary" id="btn-hv">提取并建库</button></div>
+        <div id="hv-out" class="out" hidden></div>
+      </div>
+      <div class="card">
+        <h2>3. 导出系统字体</h2>
+        <p class="desc">编译为可安装的 .ttf / .otf，内置 OpenType calt：相邻同字自动轮换真迹变体。</p>
+        <div class="row">
+          <div><label>字库</label><select id="fb-pack" class="pack-select"></select></div>
+          <div><label>格式</label><select id="fb-fmt"><option value="ttf">TTF</option><option value="otf">OTF (CFF)</option></select></div>
+        </div>
+        <label>字体名称（可选）</label>
+        <input id="fb-name" type="text" placeholder="InkTwin-My-Hand" />
+        <div class="actions"><button class="btn primary" id="btn-fb">编译字体</button></div>
+        <div id="fb-out" class="files"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Compose ========== -->
+  <section id="tab-compose" class="tab active">
+    <div class="grid g2">
+      <div class="card">
+        <h2>Markdown + LaTeX 解答稿</h2>
+        <p class="desc">支持 <code>$...$</code> 公式、Markdown 表格、<code>```handplot</code> 草图块（number_line / func / fbd）。按 <code>## 1.</code> / <code>## Problem 1</code> 分题。</p>
+        <textarea id="md"></textarea>
+        <div class="actions">
+          <button class="btn" id="btn-preflight">预检 Preflight</button>
+          <button class="btn primary" id="btn-render">生成仿手写 PDF</button>
+        </div>
+        <div id="pf-out" class="out" hidden></div>
+      </div>
+      <div class="grid" style="align-content:start">
+        <div class="card">
+          <h2>纸张与笔</h2>
+          <div class="row">
+            <div><label>字库</label><select id="opt-pack" class="pack-select"></select></div>
+            <div><label>纸张</label>
+              <select id="opt-paper">
+                <option value="auto">自动</option><option value="grid">方格 grid</option><option value="grid5">小方格 grid5</option>
+                <option value="ruled8">横线本 ruled8</option><option value="ruled7">横线本 ruled7</option><option value="dots">点阵 dots</option>
+                <option value="white">白纸 white</option><option value="cream">米黄 cream</option><option value="compo">作文纸 compo</option>
+              </select></div>
+            <div><label>纸型</label><select id="opt-size"><option>A4</option><option>B5</option><option>16K</option><option>LETTER</option></select></div>
+          </div>
+          <div class="row">
+            <div><label>墨水</label><select id="opt-ink"><option value="black">黑</option><option value="blue">蓝</option><option value="darkblue">深蓝</option><option value="pencil">铅灰</option></select></div>
+            <div><label>笔触材质</label><select id="opt-pen"><option value="gel">中性笔 gel（纯矢量）</option><option value="ballpoint">圆珠笔</option><option value="fountain">钢笔</option><option value="pencil">铅笔</option></select></div>
+            <div><label>书写状态</label><select id="opt-mood"><option value="neat">工整 neat</option><option value="normal" selected>日常 normal</option><option value="rush">赶工 rush</option></select></div>
+          </div>
+          <div class="row">
+            <div><label>字号 (pt)</label><input id="opt-fs" type="number" value="12" step="0.5" min="8" max="20" /></div>
+            <div><label>随机种子（可选）</label><input id="opt-seed" type="number" placeholder="自动" /></div>
+            <div><label>页眉标签</label><input id="opt-tag" type="text" placeholder="W10" /></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>原题空白卷叠写（可选）</h2>
+          <p class="desc">上传空白作业 / 试卷 PDF，自动识别题号与留白框；可拖动、缩放、增删答题框，点击 Q 标签改题号。</p>
+          <input id="ov-file" type="file" accept="application/pdf" />
+          <div class="actions">
+            <button class="btn" id="btn-detect">检测留白框</button>
+            <button class="btn" id="btn-clear-ov">移除原卷</button>
+          </div>
+          <div id="ov-info" class="out" hidden></div>
+          <div id="lay-pages" class="lay-pages" style="margin-top:28px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== Preview ========== -->
+  <section id="tab-preview" class="tab">
+    <div class="grid" style="grid-template-columns: minmax(420px, 2fr) minmax(300px, 1fr);">
+      <div class="card"><div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div></div>
+      <div class="grid" style="align-content:start">
+        <div class="card">
+          <h2>几何质检 Inspect</h2>
+          <div id="insp"></div>
+          <div class="actions">
+            <button class="btn" data-op="tighten">收拢空隙 tighten</button>
+            <button class="btn" data-op="drift">自然右漂 drift</button>
+            <button class="btn" data-op="undo">撤销</button>
+            <button class="btn" data-op="reset">还原</button>
+          </div>
+          <label>切换笔触材质后重绘</label>
+          <div class="row">
+            <select id="pv-pen"><option value="gel">中性笔 gel</option><option value="ballpoint">圆珠笔</option><option value="fountain">钢笔</option><option value="pencil">铅笔</option></select>
+            <button class="btn" id="btn-repen">重绘</button>
+          </div>
+        </div>
+        <div class="card">
+          <h2>导出</h2>
+          <div class="actions">
+            <button class="btn primary" data-export="pdf">PDF</button>
+            <button class="btn" data-export="svg">透明 SVG 图层</button>
+            <button class="btn" data-export="png">透明 PNG 图层</button>
+            <button class="btn" id="btn-editor">高级逐字编辑器 ↗</button>
+          </div>
+          <div id="exp-out" class="files"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="toast" class="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [] };
+
+const SAMPLE_MD = `---
+title: 微积分作业 W3
+---
+# 微积分作业 W3
+
+## 1.
+$f(x) = x^3 - 3x$，$f'(x) = 3x^2 - 3 = 0 \\Rightarrow x = \\pm 1$
+
+∴ 极大值 $f(-1) = 2$，极小值 $f(1) = -2$
+
+## 2.
+$\\int_0^2 x^2\\,dx = \\frac{8}{3}$
+
+\`\`\`handplot
+type: func
+width_mm: 60
+height_mm: 38
+x_range: [-0.5, 2.6]
+y_range: [-0.5, 4.5]
+shade: { expr: "x**2", from: 0, to: 2 }
+curves:
+  - expr: "x**2"
+    domain: [-0.4, 2.15]
+\`\`\`
+
+## 3.
+| x | -1 | 0 | 1 |
+| :--- | :--- | :--- | :--- |
+| f(x) | 2 | 0 | -2 |
+`;
+
+function toast(msg, err = false) {
+  const t = $('#toast');
+  t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+  clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', err ? 6000 : 2600);
+}
+
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || 'request failed');
+  return j;
+}
+
+async function busy(btn, fn) {
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>' + old;
+  try { return await fn(); } catch (e) { toast(e.message, true); console.error(e); } finally { btn.disabled = false; btn.innerHTML = old; }
+}
+
+function fileToB64(file) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
+}
+
+function switchTab(name) {
+  $$('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  $$('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+}
+$$('nav button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+async function loadState() {
+  const st = await api('/api/state');
+  $('#ver').textContent = 'v' + st.version;
+  const d = $('#doctor');
+  d.textContent = st.doctor.ok ? '环境就绪 · 离线' : '环境缺失：请运行 inktwin doctor';
+  d.className = 'pill ' + (st.doctor.ok ? 'ok' : 'bad');
+  S.packs = st.packs.filter(p => !p.error);
+  $$('.pack-select').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = S.packs.map(p => `<option value="${p.id}">${p.id}（${p.scope} · ${p.total_chars} 字 / ${p.variants} 变体）</option>`).join('');
+    if (prev) sel.value = prev;
+  });
+  $('#hv-merge').innerHTML = '<option value="">（新建）</option>' + S.packs.map(p => `<option value="${p.id}">${p.id}</option>`).join('');
+}
+
+/* ---------------- Forge ---------------- */
+$('#btn-tpl').onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/template', { tier: $('#tpl-tier').value, chars: $('#tpl-chars').value.trim(), markdown: $('#md').value, pack: $('#opt-pack').value });
+  $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" target="_blank">下载字帖 PDF（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
+  $('#tpl-thumbs').innerHTML = j.previews.map(s => `<img src="${s}">`).join('');
+});
+
+$('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
+  const f = $('#hv-file').files[0];
+  if (!f) throw new Error('请先选择已填写的字帖 PDF');
+  const j = await api('/api/harvest', { pdf_b64: await fileToB64(f), id: $('#hv-id').value, merge_into: $('#hv-merge').value || null });
+  const r = j.result;
+  const o = $('#hv-out'); o.hidden = false;
+  o.textContent = `✓ ${r.id}：填写 ${r.filled_cells}/${r.total_cells} 格，新增 ${r.added_glyphs} 字 / ${r.added_variants} 变体 / ${r.added_strokes} 笔画 / ${r.added_radicals} 偏旁\n共 ${r.total_chars} 字 · ${r.total_variants} 变体\n${r.pack}`;
+  await loadState();
+  toast('建库完成：' + r.id);
+});
+
+$('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/fontbuild', { pack: $('#fb-pack').value, format: $('#fb-fmt').value, name: $('#fb-name').value.trim() });
+  const r = j.result;
+  $('#fb-out').innerHTML = `<a href="${j.font_url}" download>下载 ${r.family}.${r.format}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
+});
+
+/* ---------------- Compose ---------------- */
+function renderOptions() {
+  return {
+    markdown: $('#md').value, pack: $('#opt-pack').value, paper: $('#opt-paper').value, page_size: $('#opt-size').value,
+    ink: $('#opt-ink').value, pen_type: $('#opt-pen').value, mood: $('#opt-mood').value,
+    font_size: parseFloat($('#opt-fs').value || '12'), seed: $('#opt-seed').value || null, tag: $('#opt-tag').value.trim(),
+    overlay_pdf_b64: S.overlayB64, layout: S.layout,
+  };
+}
+
+$('#btn-preflight').onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/preflight', { markdown: $('#md').value, pack: $('#opt-pack').value });
+  const r = j.report, c = r.cjk;
+  const o = $('#pf-out'); o.hidden = false;
+  o.textContent = `真迹汉字覆盖：${c.real_in_pack}/${c.total_unique}（${(c.real_coverage_ratio * 100).toFixed(1)}%）\n合成兜底生字（${c.synthesized_unseen}）：${(c.unseen_chars || []).join('')}\n长公式断行：${(r.formula_splits || []).length} 处\n可用宽度：${r.usable_width_mm} mm`;
+  if (c.unseen_chars && c.unseen_chars.length) $('#tpl-chars').value = c.unseen_chars.slice(0, 40).join('');
+});
+
+$('#btn-render').onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/render', renderOptions());
+  showSnapshot(j);
+  $('#pv-pen').value = $('#opt-pen').value;
+  switchTab('preview');
+  toast('已生成：' + j.inspect.glyph_count + ' 个手写图元');
+});
+
+$('#btn-detect').onclick = (e) => busy(e.currentTarget, async () => {
+  const f = $('#ov-file').files[0];
+  if (!f) throw new Error('请先选择空白原卷 PDF');
+  S.overlayB64 = await fileToB64(f);
+  const j = await api('/api/layout-detect', { pdf_b64: S.overlayB64 });
+  S.layout = j.layout; S.layoutPreviews = j.previews;
+  const o = $('#ov-info'); o.hidden = false;
+  o.textContent = `${j.layout.pages.length} 页 · ${j.layout.boxes.length} 个答题框 · ${j.layout.obstacles.length} 个题干/图形障碍`;
+  renderLayoutEditor();
+});
+
+$('#btn-clear-ov').onclick = () => {
+  S.overlayB64 = null; S.layout = null; S.layoutPreviews = [];
+  $('#ov-file').value = ''; $('#ov-info').hidden = true; $('#lay-pages').innerHTML = '';
+};
+
+function placeBox(el, b, pg) {
+  el.style.left = (b.x_mm / pg.width_mm * 100) + '%';
+  el.style.top = (b.y_mm / pg.height_mm * 100) + '%';
+  el.style.width = (b.w_mm / pg.width_mm * 100) + '%';
+  el.style.height = (b.h_mm / pg.height_mm * 100) + '%';
+}
+
+function renderLayoutEditor() {
+  const wrap = $('#lay-pages'); wrap.innerHTML = '';
+  if (!S.layout) return;
+  S.layout.pages.forEach((pg, pi) => {
+    const pd = document.createElement('div'); pd.className = 'lay-page';
+    pd.innerHTML = `<div class="phead">第 ${pi + 1} 页 · <a href="#" data-add="${pg.page}">+ 添加框</a></div>`;
+    const img = new Image(); img.src = S.layoutPreviews[pi]; pd.appendChild(img);
+    S.layout.boxes.forEach((b, bi) => {
+      if (b.page !== pg.page) return;
+      const bx = document.createElement('div'); bx.className = 'lay-box';
+      bx.innerHTML = `<span class="lb">Q${b.qnum}</span><span class="del" title="删除">×</span><span class="rs"></span>`;
+      placeBox(bx, b, pg);
+      bx.querySelector('.lb').onclick = (ev) => { ev.stopPropagation(); const v = prompt('题号', b.qnum); if (v !== null && !isNaN(parseInt(v))) { b.qnum = parseInt(v); renderLayoutEditor(); } };
+      bx.querySelector('.del').onclick = (ev) => { ev.stopPropagation(); S.layout.boxes.splice(bi, 1); renderLayoutEditor(); };
+      bx.addEventListener('pointerdown', (ev) => {
+        if (ev.target.classList.contains('lb') || ev.target.classList.contains('del')) return;
+        ev.preventDefault();
+        const resize = ev.target.classList.contains('rs');
+        const mmPerPx = pg.width_mm / pd.clientWidth;
+        const sx = ev.clientX, sy = ev.clientY, o = { ...b };
+        const move = (mv) => {
+          const dx = (mv.clientX - sx) * mmPerPx, dy = (mv.clientY - sy) * mmPerPx;
+          if (resize) { b.w_mm = Math.max(20, o.w_mm + dx); b.h_mm = Math.max(10, o.h_mm + dy); }
+          else { b.x_mm = Math.min(pg.width_mm - b.w_mm, Math.max(0, o.x_mm + dx)); b.y_mm = Math.min(pg.height_mm - b.h_mm, Math.max(0, o.y_mm + dy)); }
+          placeBox(bx, b, pg);
+        };
+        const up = () => {
+          window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+          ['x_mm', 'y_mm', 'w_mm', 'h_mm'].forEach(k => b[k] = Math.round(b[k] * 100) / 100);
+        };
+        window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+      });
+      pd.appendChild(bx);
+    });
+    wrap.appendChild(pd);
+  });
+  $$('[data-add]').forEach(a => a.onclick = (ev) => {
+    ev.preventDefault();
+    const page = parseInt(a.dataset.add);
+    const pg = S.layout.pages.find(p => p.page === page);
+    const maxQ = Math.max(0, ...S.layout.boxes.map(b => b.qnum || 0));
+    S.layout.boxes.push({ id: `p${page}_manual_${Date.now() % 100000}`, page, qnum: maxQ + 1, kind: 'rect', x_mm: 16, y_mm: pg.height_mm * 0.4, w_mm: pg.width_mm - 32, h_mm: 40 });
+    S.layout.boxes.sort((a, b) => a.page - b.page || a.y_mm - b.y_mm);
+    renderLayoutEditor();
+  });
+}
+
+/* ---------------- Preview ---------------- */
+function showSnapshot(j) {
+  $('#pages').innerHTML = j.previews.map((s, i) => `<img src="${s}" alt="page ${i + 1}">`).join('');
+  const ins = j.inspect, ac = ins.anomaly_counts || {};
+  const row = (k, label, crit) => { const v = ac[k] || 0; const cls = v === 0 ? 'ok' : (crit ? 'bad' : 'warn'); return `<div class="stat"><span>${label}</span><b class="${cls}">${v}</b></div>`; };
+  $('#insp').innerHTML =
+    `<div class="stat"><span>页数 / 行数 / 手写图元</span><b>${ins.pages} / ${ins.line_count} / ${ins.glyph_count}</b></div>` +
+    row('prompt_collision', '压题干 prompt_collision', true) + row('outside_margin', '越界 outside_margin', true) +
+    row('overlap', '墨迹重叠 overlap', false) + row('gap', '大空隙 gap', false) + row('left_edges_aligned', '左边缘过齐 left_edges_aligned', false) +
+    `<div class="stat"><span>已追加编辑</span><b>${j.edits_count}</b></div>` +
+    (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '') +
+    `<div class="files"><a href="${j.pdf_url}" target="_blank">打开当前 PDF ↗</a></div>`;
+}
+
+$$('[data-op]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/scene/ops', { action: b.dataset.op });
+  showSnapshot(j); toast('已应用：' + b.dataset.op);
+}));
+
+$('#btn-repen').onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/scene/ops', { action: 'repen', pen_type: $('#pv-pen').value });
+  showSnapshot(j); toast('已切换笔触：' + $('#pv-pen').value);
+});
+
+$$('[data-export]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
+  const fmt = b.dataset.export;
+  const j = await api('/api/scene/export', { format: fmt, transparent: fmt !== 'pdf' });
+  $('#exp-out').innerHTML = j.files.map(f => `<a href="${f}" target="_blank">${f.split('/').pop()}</a>`).join('');
+}));
+
+$('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {
+  const j = await api('/api/scene/editor', {});
+  window.open(j.url, '_blank');
+});
+
+$('#md').value = SAMPLE_MD;
+loadState().catch(e => toast(e.message, true));
+</script>
+</body>
+</html>
+

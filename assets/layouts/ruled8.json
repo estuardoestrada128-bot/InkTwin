@@ -1,0 +1,16 @@
+{
+  "paperId": "ruled8",
+  "pageSize": "A4",
+  "d": {
+    "size": 4.8,
+    "line": 8.0,
+    "indent": 0,
+    "margins": [26.0, 14.0, 16.0, 26.0]
+  },
+  "header": {
+    "noLabel": "No. ________",
+    "dateLabel": "Date ____ / ____",
+    "yMm": 20.0
+  }
+}
+

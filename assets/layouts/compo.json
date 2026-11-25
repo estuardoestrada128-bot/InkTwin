@@ -1,0 +1,12 @@
+{
+  "paperId": "compo",
+  "pageSize": "A4",
+  "d": {
+    "size": 6.2,
+    "cols": 20,
+    "rows": 20,
+    "gridLock": true,
+    "margins": [24.0, 15.0, 18.0, 15.0]
+  }
+}
+
