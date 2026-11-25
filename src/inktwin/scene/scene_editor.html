@@ -63,6 +63,8 @@
     align-items: flex-start;
     position: relative;
   }
+  #stage-wrap.space-pan { cursor: grab; }
+  #stage-wrap.panning, #stage-wrap.panning * { cursor: grabbing !important; }
   #paper-frame {
     position: relative;
     background: #fff;
@@ -185,6 +187,7 @@
     <h3>操作说明</h3>
     <div style="color:var(--muted)">
       <span class="kbd">Ctrl + 滚轮</span>：单独缩放纸面画布<br/>
+      <span class="kbd">中键</span> 或 <span class="kbd">空格 + 左键</span>拖动：平移画布<br/>
       单击 / 框选：选中单字或多个字<br/>
       按住拖动 / 方向键：实时微调位置<br/>
       双击或按 <span class="kbd">L</span>：选中整行<br/>
@@ -385,6 +388,38 @@
     }
   }, { passive: false });
 
+  // Canvas drag-pan (Middle-mouse or Space + Left-drag)
+  let spaceHeld = false;
+  let panState = null;
+
+  stageWrap.addEventListener('mousedown', (e) => {
+    if (e.button === 1 || (e.button === 0 && spaceHeld)) {
+      e.preventDefault();
+      e.stopPropagation();
+      panState = { sx: e.clientX, sy: e.clientY, sl: stageWrap.scrollLeft, st: stageWrap.scrollTop };
+      stageWrap.classList.add('panning');
+    }
+  }, true);
+
+  window.addEventListener('mousemove', (e) => {
+    if (!panState) return;
+    stageWrap.scrollLeft = panState.sl - (e.clientX - panState.sx);
+    stageWrap.scrollTop = panState.st - (e.clientY - panState.sy);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!panState) return;
+    panState = null;
+    stageWrap.classList.remove('panning');
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      spaceHeld = false;
+      stageWrap.classList.remove('space-pan');
+    }
+  });
+
   // Pointer selection & live drag-to-move
   let dragMode = null;
   let startX = 0, startY = 0;
@@ -494,6 +529,14 @@
   }
 
   window.addEventListener('keydown', async (e) => {
+    if (e.code === 'Space' && !/INPUT|TEXTAREA/.test((e.target && e.target.tagName) || '')) {
+      e.preventDefault();
+      if (!spaceHeld) {
+        spaceHeld = true;
+        stageWrap.classList.add('space-pan');
+      }
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       await api('/api/undo', 'POST', {});

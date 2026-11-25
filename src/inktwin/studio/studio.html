@@ -44,9 +44,10 @@
   .pv-bar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
   .zoom-lbl { min-width: 48px; text-align: center; font-size: 13px; cursor: pointer; padding: 3px 6px; border-radius: 6px; user-select: none; }
   .zoom-lbl:hover { background: var(--accent-soft); color: var(--accent); }
-  .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; cursor: grab; user-select: none; }
+  .pages-vp.panning { cursor: grabbing; }
   .pages { display: flex; flex-direction: column; gap: 14px; align-items: center; }
-  .pages img { width: 760px; height: auto; max-width: none; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; }
+  .pages img { width: 760px; height: auto; max-width: none; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; pointer-events: none; -webkit-user-drag: none; user-select: none; }
   .pages img.checker { background-color: #f8f9fb; }
   .checker { background-image: linear-gradient(45deg, #e2e5ec 25%, transparent 25%), linear-gradient(-45deg, #e2e5ec 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e5ec 75%), linear-gradient(-45deg, transparent 75%, #e2e5ec 75%); background-size: 14px 14px; background-position: 0 0, 0 7px, 7px -7px, -7px 0; background-color: #f8f9fb; }
   .seg-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
@@ -71,7 +72,9 @@
   .modal-bar .btn { background: #2d3447; color: #fff; border-color: #414b63; padding: 5px 11px; font-size: 12.5px; }
   .modal-bar .btn.primary { background: var(--accent); border-color: var(--accent); }
   .modal-body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
-  .modal-body img { width: 780px; height: auto; max-width: none; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; }
+  .modal-body.pannable { cursor: grab; user-select: none; }
+  .modal-body.panning { cursor: grabbing; }
+  .modal-body img { width: 780px; height: auto; max-width: none; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; pointer-events: none; -webkit-user-drag: none; user-select: none; }
   .modal-body img.checker { background-color: #f8f9fb; }
   .modal-body iframe { width: min(980px, 92vw); height: calc(100vh - 96px); border: 0; border-radius: 6px; background: #fff; }
   .lay-pages { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -275,7 +278,7 @@
           <button class="btn" id="btn-pv-zin" title="放大预览">+</button>
           <button class="btn" id="btn-pv-zfit">适应宽度</button>
           <span id="pv-mode-pill" class="pill">完整 PDF · 矢量高清</span>
-          <span class="hint">预览区按住 <b>Ctrl + 滚轮</b> 可单独缩放</span>
+          <span class="hint">按住左键拖动画布 · <b>Ctrl + 滚轮</b>缩放</span>
         </div>
         <div id="pages-vp" class="pages-vp">
           <div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div>
@@ -466,6 +469,7 @@ function openImageModal(title, urls, { downloadUrl = null, downloadName = '', ch
   $('#pm-zout').style.display = $('#pm-zin').style.display = $('#pm-zlbl').style.display = '';
   S.modalZoom = 1.0;
   $('#pm-zlbl').textContent = '100%';
+  $('#pm-body').classList.add('pannable');
   $('#pm-body').innerHTML = urls.map((u, i) => `<img src="${u}" class="${checker ? 'checker' : ''}" alt="page ${i + 1}" />`).join('');
   $('#pv-modal').classList.add('open');
 }
@@ -475,12 +479,43 @@ function openPdfModal(title, pdfUrl, downloadName = 'InkTwin-Output.pdf') {
   const dl = $('#pm-dl');
   dl.href = pdfUrl; dl.download = downloadName; dl.style.display = 'inline-block';
   $('#pm-zout').style.display = $('#pm-zin').style.display = $('#pm-zlbl').style.display = 'none';
+  $('#pm-body').classList.remove('pannable');
   $('#pm-body').innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
   $('#pv-modal').classList.add('open');
 }
 
+function attachDragPan(el, canPanFn) {
+  let pan = null;
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 && e.button !== 1) return;
+    if (!canPanFn(e)) return;
+    e.preventDefault();
+    el._didPan = false;
+    pan = { sx: e.clientX, sy: e.clientY, sl: el.scrollLeft, st: el.scrollTop };
+    el.classList.add('panning');
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!pan) return;
+    const dx = e.clientX - pan.sx, dy = e.clientY - pan.sy;
+    if (Math.hypot(dx, dy) > 3) el._didPan = true;
+    el.scrollLeft = pan.sl - dx;
+    el.scrollTop = pan.st - dy;
+  });
+  window.addEventListener('mouseup', () => {
+    if (!pan) return;
+    pan = null;
+    el.classList.remove('panning');
+  });
+}
+
+attachDragPan($('#pages-vp'), () => $$('#pages img').length > 0);
+attachDragPan($('#pm-body'), () => $$('#pm-body img').length > 0);
+
 $('#pm-close').onclick = () => $('#pv-modal').classList.remove('open');
-$('#pv-modal').onclick = (e) => { if (e.target === $('#pv-modal') || e.target === $('#pm-body')) $('#pv-modal').classList.remove('open'); };
+$('#pv-modal').onclick = (e) => {
+  if ($('#pm-body')._didPan) { $('#pm-body')._didPan = false; return; }
+  if (e.target === $('#pv-modal') || e.target === $('#pm-body')) $('#pv-modal').classList.remove('open');
+};
 window.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#pv-modal').classList.remove('open'); });
 $('#pm-zin').onclick = () => applyModalZoom(S.modalZoom * 1.2);
 $('#pm-zout').onclick = () => applyModalZoom(S.modalZoom / 1.2);
