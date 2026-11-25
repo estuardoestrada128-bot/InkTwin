@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable, Optional, Tuple
 
 from .inspector import inspect_scene
-from .ops import apply_drift, apply_tighten, make_atomic_ops, next_batch_id, undo_last_batch
+from .ops import apply_align, apply_drift, apply_spacing, apply_tighten, make_atomic_ops, next_batch_id, undo_last_batch
 from .renderer import export_scene, render_page_svg
 from .schema import load_inkscene, resolve_scene_state, save_edits
 
@@ -29,6 +29,7 @@ def start_editor_server(
     """Start local 127.0.0.1 editor server and return (server, port, url)."""
     _scene0, _edits0, resolved_dir = load_inkscene(scene_path)
     lock = threading.Lock()
+    redo_stack: list = []
 
     class _EditorHandler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -72,6 +73,7 @@ def start_editor_server(
                             "pages": insp["pages"],
                             "edits_count": len(edits),
                             "batches_count": _count_batches(edits),
+                            "redo_count": len(redo_stack),
                             "inspect": insp,
                         }
                     )
@@ -169,6 +171,17 @@ def start_editor_server(
                             new_edits, added = apply_tighten(scene, edits)
                         elif action == "drift":
                             new_edits, added = apply_drift(scene, edits, force=bool(payload.get("force", False)))
+                        elif action == "spacing":
+                            new_edits, added = apply_spacing(
+                                scene, edits, payload.get("ids") or [],
+                                axis=str(payload.get("axis", "x")),
+                                delta_mm=float(payload.get("delta_mm", 0.45)),
+                            )
+                        elif action == "align":
+                            new_edits, added = apply_align(
+                                scene, edits, payload.get("ids") or [],
+                                mode=str(payload.get("mode", "left")),
+                            )
                         else:
                             batch = next_batch_id(edits)
                             op = make_atomic_ops(
@@ -179,6 +192,7 @@ def start_editor_server(
                                 dx=float(payload.get("dx", 0.0)),
                                 dy=float(payload.get("dy", 0.0)),
                                 k=float(payload.get("k", 1.0)),
+                                about=payload.get("about", "anchor"),
                                 deg=float(payload.get("deg", 0.0)),
                                 vidx=payload.get("vidx"),
                                 color=payload.get("color"),
@@ -195,6 +209,8 @@ def start_editor_server(
                                 for g in scene.get("glyphs", [])
                                 if g.get("id") in id_set and len(pool.get(g.get("ch", ""), [])) >= 2
                             )
+                        if added:
+                            redo_stack.clear()
                         save_edits(sdir, new_edits)
                         real_added = sum(1 for op in added if op.get("op") != "note")
                         resp_obj = {
@@ -202,6 +218,7 @@ def start_editor_server(
                             "added": real_added,
                             "edits_count": len(new_edits),
                             "batches_count": _count_batches(new_edits),
+                            "redo_count": len(redo_stack),
                         }
                         if changed_reroll is not None:
                             resp_obj["rerolled"] = changed_reroll
@@ -209,6 +226,11 @@ def start_editor_server(
                         return
 
                     if clean == "/api/undo":
+                        if edits:
+                            last_b = int(edits[-1].get("batch", 0))
+                            popped = [dict(op) for op in edits if int(op.get("batch", 0)) == last_b]
+                            if popped:
+                                redo_stack.append(popped)
                         new_edits, removed = undo_last_batch(edits)
                         save_edits(sdir, new_edits)
                         self._send_json({
@@ -216,12 +238,38 @@ def start_editor_server(
                             "removed": removed,
                             "edits_count": len(new_edits),
                             "batches_count": _count_batches(new_edits),
+                            "redo_count": len(redo_stack),
+                        })
+                        return
+
+                    if clean == "/api/redo":
+                        if not redo_stack:
+                            self._send_json({
+                                "ok": True,
+                                "restored": 0,
+                                "edits_count": len(edits),
+                                "batches_count": _count_batches(edits),
+                                "redo_count": 0,
+                            })
+                            return
+                        batch_ops = redo_stack.pop()
+                        b = next_batch_id(edits)
+                        restored_ops = [dict(op, batch=b) for op in batch_ops]
+                        new_edits = edits + restored_ops
+                        save_edits(sdir, new_edits)
+                        self._send_json({
+                            "ok": True,
+                            "restored": len(restored_ops),
+                            "edits_count": len(new_edits),
+                            "batches_count": _count_batches(new_edits),
+                            "redo_count": len(redo_stack),
                         })
                         return
 
                     if clean == "/api/reset":
+                        redo_stack.clear()
                         save_edits(sdir, [])
-                        self._send_json({"ok": True, "edits_count": 0, "batches_count": 0})
+                        self._send_json({"ok": True, "edits_count": 0, "batches_count": 0, "redo_count": 0})
                         return
 
                     if clean == "/api/export":

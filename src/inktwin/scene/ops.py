@@ -224,3 +224,101 @@ def apply_drift(
         new_ops.append({"op": "note", "text": f"drift ({mode}, amount={amt})", "batch": batch})
     return edits + new_ops, new_ops
 
+
+def apply_spacing(
+    scene: dict,
+    edits: List[dict],
+    ids: List[str],
+    axis: str = "x",
+    delta_mm: float = 0.45,
+) -> tuple[List[dict], List[dict]]:
+    """Adjust horizontal character spacing or vertical line spacing across selected glyphs."""
+    if not ids:
+        return edits, []
+    resolved = resolve_scene_state(scene, edits)
+    id_set = set(ids)
+    targets = [g for g in resolved["glyphs"] if not g.get("hidden") and g.get("id") in id_set]
+    if len(targets) < 2:
+        return edits, []
+
+    by_line: Dict[str, List[dict]] = {}
+    for g in targets:
+        by_line.setdefault(str(g.get("line", "")), []).append(g)
+
+    batch = next_batch_id(edits)
+    new_ops: List[dict] = []
+
+    if axis == "y":
+        if len(by_line) < 2:
+            return edits, []
+        line_rows = []
+        for lid, gl in by_line.items():
+            ys = sorted(float(g["y"]) + float(g["h"]) * 0.5 for g in gl)
+            med_y = ys[len(ys) // 2]
+            line_rows.append((med_y, lid, [g["id"] for g in gl]))
+        line_rows.sort(key=lambda r: r[0])
+        for k in range(1, len(line_rows)):
+            dy = round(k * float(delta_mm), 3)
+            if abs(dy) >= 0.05:
+                new_ops.append({"op": "move", "ids": line_rows[k][2], "dx": 0.0, "dy": dy, "batch": batch})
+    else:
+        for _lid, gl in by_line.items():
+            if len(gl) < 2:
+                continue
+            gl_sorted = sorted(gl, key=lambda g: float(g["x"]))
+            for i in range(1, len(gl_sorted)):
+                dx = round(i * float(delta_mm), 3)
+                if abs(dx) >= 0.05:
+                    new_ops.append({"op": "move", "ids": [gl_sorted[i]["id"]], "dx": dx, "dy": 0.0, "batch": batch})
+
+    if new_ops:
+        new_ops.append({"op": "note", "text": f"spacing {axis} ({delta_mm:+.2f}mm)", "batch": batch})
+    return edits + new_ops, new_ops
+
+
+def apply_align(
+    scene: dict,
+    edits: List[dict],
+    ids: List[str],
+    mode: str = "left",
+) -> tuple[List[dict], List[dict]]:
+    """Horizontally align multiple selected lines to their common left, center, or right bound."""
+    if not ids:
+        return edits, []
+    resolved = resolve_scene_state(scene, edits)
+    id_set = set(ids)
+    targets = [g for g in resolved["glyphs"] if not g.get("hidden") and g.get("id") in id_set]
+    by_line: Dict[str, List[dict]] = {}
+    for g in targets:
+        by_line.setdefault(str(g.get("line", "")), []).append(g)
+    if len(by_line) < 2:
+        return edits, []
+
+    bounds = []
+    for lid, gl in by_line.items():
+        left = min(float(g["x"]) for g in gl)
+        right = max(float(g["x"]) + float(g["w"]) for g in gl)
+        bounds.append((lid, [g["id"] for g in gl], left, right, 0.5 * (left + right)))
+
+    if mode == "right":
+        ref = max(b[3] for b in bounds)
+        key_idx = 3
+    elif mode == "center":
+        ref = 0.5 * (min(b[2] for b in bounds) + max(b[3] for b in bounds))
+        key_idx = 4
+    else:
+        ref = min(b[2] for b in bounds)
+        key_idx = 2
+
+    batch = next_batch_id(edits)
+    new_ops: List[dict] = []
+    for _lid, gids, left, right, center in bounds:
+        val = (left, right, center)[key_idx - 2]
+        dx = round(ref - val, 3)
+        if abs(dx) >= 0.1:
+            new_ops.append({"op": "move", "ids": gids, "dx": dx, "dy": 0.0, "batch": batch})
+
+    if new_ops:
+        new_ops.append({"op": "note", "text": f"align {mode}", "batch": batch})
+    return edits + new_ops, new_ops
+

@@ -347,6 +347,7 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
             dx=float(p.get("dx", 0.0)),
             dy=float(p.get("dy", 0.0)),
             k=float(p.get("k", 1.0)),
+            about=p.get("about", "anchor"),
             deg=float(p.get("deg", 0.0)),
             vidx=p.get("vidx"),
             color=p.get("color"),

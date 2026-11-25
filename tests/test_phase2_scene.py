@@ -21,7 +21,9 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from inktwin.scene import (
+    apply_align,
     apply_drift,
+    apply_spacing,
     apply_tighten,
     export_scene,
     inspect_scene,
@@ -102,8 +104,32 @@ def run_phase2_tests() -> None:
         assert new_d != old_d, "Expected reroll to change vector path!"
         assert all(g["color"] == "#c6332f" for g in res_state["glyphs"] if g["line"] == target_line)
 
+        # Group selection rotate around shared center moves glyph centers + updates rot coherently
+        grp_ids = [g["id"] for g in scene["glyphs"][:3]]
+        op_grot = make_atomic_ops("rotate", ids=grp_ids, deg=12.0, about="selection", batch=b + 2)
+        rot_state = resolve_scene_state(scene, edits2 + [op_grot])
+        by_b = {g["id"]: g for g in res_state["glyphs"]}
+        by_a = {g["id"]: g for g in rot_state["glyphs"]}
+        assert all(abs(by_a[gid]["rot"] - by_b[gid]["rot"] - 12.0) < 0.05 for gid in grp_ids)
+        assert any(abs(by_a[gid]["x"] - by_b[gid]["x"]) > 0.05 for gid in grp_ids)
+
         undone, rem_n = undo_last_batch(edits2)
         assert rem_n == 1 and len(undone) == len(edits1) + 1
+
+        # 4b. Multi-glyph spacing (x & y) and left alignment
+        multi_ids = []
+        for ln_obj in scene["lines"][:2]:
+            multi_ids.extend(ln_obj["glyph_ids"][:3])
+        ed_sx, add_sx = apply_spacing(scene, edits1, multi_ids, axis="x", delta_mm=0.6)
+        assert add_sx and len(ed_sx) > len(edits1)
+        ed_sy, add_sy = apply_spacing(scene, edits1, multi_ids, axis="y", delta_mm=1.5)
+        assert add_sy and any(op.get("dy", 0) == 1.5 for op in add_sy if op.get("op") == "move")
+        ed_al, add_al = apply_align(scene, edits1, multi_ids, mode="left")
+        res_al = resolve_scene_state(scene, ed_al)
+        al_by_id = {g["id"]: g for g in res_al["glyphs"]}
+        ln0_x = min(al_by_id[gid]["x"] for gid in scene["lines"][0]["glyph_ids"][:3])
+        ln1_x = min(al_by_id[gid]["x"] for gid in scene["lines"][1]["glyph_ids"][:3])
+        assert abs(ln0_x - ln1_x) < 0.15, f"Expected aligned left edges, got {ln0_x} vs {ln1_x}"
 
         # 5. Fast SVG->PDF export (< 500ms target, 0 font spans!) & transparent PNG export
         out_edited = td_p / "edited.pdf"
@@ -143,6 +169,13 @@ def run_phase2_tests() -> None:
             )
             op_res = json.loads(urllib.request.urlopen(req, timeout=5).read().decode("utf-8"))
             assert op_res["ok"] and op_res["added"] == 1
+            # Test undo -> redo cycle
+            u_req = urllib.request.Request(f"{base_url}api/undo", data=b"{}", method="POST")
+            u_res = json.loads(urllib.request.urlopen(u_req, timeout=5).read().decode("utf-8"))
+            assert u_res["ok"] and u_res["redo_count"] == 1
+            r_req = urllib.request.Request(f"{base_url}api/redo", data=b"{}", method="POST")
+            r_res = json.loads(urllib.request.urlopen(r_req, timeout=5).read().decode("utf-8"))
+            assert r_res["ok"] and r_res["restored"] == 1 and r_res["redo_count"] == 0
         finally:
             server.shutdown()
             server.server_close()

@@ -130,13 +130,47 @@
   }
   .kbd { background: #14161b; border: 1px solid #3c4352; border-radius: 4px; padding: 0 5px; font-size: 11px; }
   #float-bar {
-    position: fixed; z-index: 45; display: none; align-items: center; gap: 5px; flex-wrap: nowrap;
+    position: fixed; z-index: 45; display: none; flex-direction: column; gap: 5px;
+    max-width: min(740px, 92vw);
     background: rgba(24, 27, 34, 0.96); backdrop-filter: blur(8px);
-    border: 1px solid #454d60; border-radius: 10px; padding: 5px 8px;
+    border: 1px solid #454d60; border-radius: 10px; padding: 6px 9px;
     box-shadow: 0 8px 28px rgba(0,0,0,0.48); white-space: nowrap;
   }
+  .fb-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
   #float-bar .sep { height: 16px; }
   #fb-count { font-size: 11.5px; color: #9fc0ff; font-weight: 600; padding: 0 4px; }
+  #xform-box {
+    position: absolute; z-index: 4; display: none; pointer-events: auto; cursor: move;
+    border: 1.5px dashed rgba(76, 141, 255, 0.92); border-radius: 3px;
+    background: rgba(76, 141, 255, 0.05);
+    transform-origin: center center;
+  }
+  .xh {
+    position: absolute; width: 10px; height: 10px; background: #fff;
+    border: 2px solid var(--accent); border-radius: 2px; pointer-events: auto;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+  }
+  .xh.nw { left: -5px; top: -5px; cursor: nwse-resize; }
+  .xh.ne { right: -5px; top: -5px; cursor: nesw-resize; }
+  .xh.sw { left: -5px; bottom: -5px; cursor: nesw-resize; }
+  .xh.se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+  .xh-stem {
+    position: absolute; left: 50%; top: -18px; width: 1.5px; height: 18px;
+    background: var(--accent); transform: translateX(-50%); pointer-events: none;
+  }
+  .xh-rot {
+    position: absolute; left: 50%; top: -27px; width: 13px; height: 13px;
+    border-radius: 50%; background: #fff; border: 2px solid var(--accent);
+    transform: translateX(-50%); pointer-events: auto; cursor: grab;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.48);
+  }
+  .xh-rot:active { cursor: grabbing; background: var(--accent); }
+  .xh-hud {
+    position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%);
+    background: rgba(16, 18, 22, 0.92); color: #dbe6ff; border: 1px solid #48546b;
+    border-radius: 5px; padding: 1px 6px; font-size: 11px; white-space: nowrap;
+    display: none; pointer-events: none;
+  }
   #btn-back { background: #262c38; border-color: #48546b; color: #dbe6ff; font-weight: 600; }
   #btn-back:hover:not(:disabled) { background: #333c4e; border-color: var(--accent); }
   #toast {
@@ -161,7 +195,8 @@
   <span class="sep"></span>
   <button id="btn-tighten" title="自动收拢过大字距">收拢空隙</button>
   <button id="btn-drift" title="为过于整齐的左边缘增加自然起伏">自然右漂</button>
-  <button id="btn-undo" title="Ctrl+Z">撤销</button>
+  <button id="btn-undo" title="撤销上一步 (Ctrl+Z)">撤销</button>
+  <button id="btn-redo" title="重做 (Ctrl+Y / Ctrl+Shift+Z)" disabled>重做</button>
   <button id="btn-reset">还原</button>
   <span style="flex:1"></span>
   <button class="primary" id="btn-export-pdf">导出 PDF</button>
@@ -174,6 +209,15 @@
       <img id="bg-img" alt="" />
       <div id="svg-host"></div>
       <svg id="overlay-layer"></svg>
+      <div id="xform-box">
+        <div class="xh nw" title="拖拽角点等比缩放（按住 Shift 步进 5%）"></div>
+        <div class="xh ne" title="拖拽角点等比缩放（按住 Shift 步进 5%）"></div>
+        <div class="xh sw" title="拖拽角点等比缩放（按住 Shift 步进 5%）"></div>
+        <div class="xh se" title="拖拽角点等比缩放（按住 Shift 步进 5%）"></div>
+        <div class="xh-stem"></div>
+        <div class="xh-rot" title="拖拽圆点自由旋转（按住 Shift 按 5° 对齐）"></div>
+        <div class="xh-hud" id="xh-hud"></div>
+      </div>
     </div>
   </div>
   <aside>
@@ -188,11 +232,11 @@
     <div style="color:var(--muted)">
       <span class="kbd">Ctrl+滚轮</span>：缩放画布 · <span class="kbd">0</span>/<span class="kbd">F</span>：100%/适应<br/>
       <span class="kbd">右键</span> / <span class="kbd">中键</span> / <span class="kbd">空格+左键</span> 拖动画布<br/>
-      单击 / 框选：选中单字；<span class="kbd">Ctrl+A</span> 全选本页<br/>
-      <span class="kbd">L</span> 选整行 · <span class="kbd">G</span> 选整表/草图 · <span class="kbd">Esc</span> 取消<br/>
-      拖动 / <span class="kbd">方向键</span>：微调位置（<span class="kbd">Shift</span> 步进 1mm）<br/>
-      <span class="kbd">R</span> 换写法 · <span class="kbd">+</span>/<span class="kbd">-</span> 缩放 · <span class="kbd">[</span>/<span class="kbd">]</span> 微旋<br/>
-      <span class="kbd">Del</span> 隐藏 · <span class="kbd">Ctrl+Z</span> 撤销
+      拖空白处框选多字；<span class="kbd">Shift+框选/点</span> 增减选<br/>
+      <span class="kbd">L</span> 整行 · <span class="kbd">Q</span> 整题 · <span class="kbd">B</span> 选下方 · <span class="kbd">G</span> 整表<br/>
+      拖蓝框内任意处或 <span class="kbd">方向键</span> 整体移动（按住 <span class="kbd">Shift</span> 锁横竖）<br/>
+      拖四角缩放 · 拖顶部圆点旋转 · <span class="kbd">R</span> 换写法<br/>
+      <span class="kbd">Del</span> 隐藏 · <span class="kbd">Ctrl+Z</span> 撤销 · <span class="kbd">Ctrl+Y</span> 重做 · <span class="kbd">Esc</span> 取消
     </div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin:12px 0 6px">
@@ -205,23 +249,43 @@
   </aside>
 </main>
 <div id="float-bar">
-  <span id="fb-count">1 字</span>
-  <span class="sep"></span>
-  <button id="btn-reroll" title="切换到该字符的另一个手写变体 (R)">换写法 (R)</button>
-  <button id="btn-sel-line" title="扩展选中整行 (L)">整行</button>
-  <button id="btn-sel-group" style="display:none" title="选中整个表格或草图 (G)">整表</button>
-  <span class="sep"></span>
-  <button id="btn-scale-up" title="放大选中字 (+)">放大</button>
-  <button id="btn-scale-dn" title="缩小选中字 (-)">缩小</button>
-  <button id="btn-rot-l" title="逆时针微旋 ([)">↺</button>
-  <button id="btn-rot-r" title="顺时针微旋 (])">↻</button>
-  <span class="sep"></span>
-  <button class="swatch" data-color="black" style="background:#111318" title="黑笔"></button>
-  <button class="swatch" data-color="blue" style="background:#19378a" title="蓝笔"></button>
-  <button class="swatch" data-color="darkblue" style="background:#13244b" title="深蓝"></button>
-  <button class="swatch" data-color="red" style="background:#c6332f" title="红笔批注"></button>
-  <span class="sep"></span>
-  <button id="btn-hide" title="隐藏选中字 (Delete)">隐藏</button>
+  <div class="fb-row">
+    <span id="fb-count">1 字</span>
+    <span class="sep"></span>
+    <button id="btn-reroll" title="切换到该字符的另一个手写变体 (R)">换写法</button>
+    <button id="btn-sel-line" title="扩展选中整行 (L)">整行</button>
+    <button id="btn-sel-q" style="display:none" title="选中所在整道题的回答 (Q)">整题</button>
+    <button id="btn-sel-below" title="一并选中当前位置及以下全部内容，方便整体上下挪位 (B)">选下方</button>
+    <button id="btn-sel-group" style="display:none" title="选中整个表格或草图 (G)">整表</button>
+    <span class="sep"></span>
+    <button id="btn-scale-up" title="放大 (+)">放大</button>
+    <button id="btn-scale-dn" title="缩小 (-)">缩小</button>
+    <button id="btn-rot-l" title="逆时针微旋 ([)">↺</button>
+    <button id="btn-rot-r" title="顺时针微旋 (])">↻</button>
+    <span class="sep"></span>
+    <button class="swatch" data-color="black" style="background:#111318" title="黑笔"></button>
+    <button class="swatch" data-color="blue" style="background:#19378a" title="蓝笔"></button>
+    <button class="swatch" data-color="darkblue" style="background:#13244b" title="深蓝"></button>
+    <button class="swatch" data-color="red" style="background:#c6332f" title="红笔批注"></button>
+    <span class="sep"></span>
+    <button id="btn-hide" title="隐藏选中内容 (Delete)">隐藏</button>
+  </div>
+  <div class="fb-row" id="fb-multi-row" style="display:none;border-top:1px solid #343a46;padding-top:4px">
+    <span style="font-size:11px;color:#98a2b3">字距:</span>
+    <button id="btn-sp-x-dec" title="收紧所选字符间距">收紧</button>
+    <button id="btn-sp-x-inc" title="拉宽所选字符间距">拉宽</button>
+    <span id="fb-lines-tools" style="display:none;align-items:center;gap:5px">
+      <span class="sep"></span>
+      <span style="font-size:11px;color:#98a2b3">行距:</span>
+      <button id="btn-sp-y-dec" title="减小多行行距">缩行距</button>
+      <button id="btn-sp-y-inc" title="增大多行行距">拉行距</button>
+      <span class="sep"></span>
+      <span style="font-size:11px;color:#98a2b3">对齐:</span>
+      <button id="btn-al-left" title="多行左缘对齐">左齐</button>
+      <button id="btn-al-center" title="多行居中对齐">居中</button>
+      <button id="btn-al-right" title="多行右缘对齐">右齐</button>
+    </span>
+  </div>
 </div>
 <div id="marquee"></div>
 <div id="toast"></div>
@@ -247,6 +311,8 @@
   const paperFrame = document.getElementById('paper-frame');
   const marqueeEl = document.getElementById('marquee');
   const floatBar = document.getElementById('float-bar');
+  const xformBox = document.getElementById('xform-box');
+  const xhHud = document.getElementById('xh-hud');
   const returnUrl = new URLSearchParams(location.search).get('return') || '';
   const hasOpener = (() => { try { return !!(window.opener && !window.opener.closed); } catch (_) { return false; } })();
 
@@ -328,17 +394,17 @@
     });
   }
 
-  function positionFloatBar() {
-    if (!selected.size || dragMode || panState) {
-      floatBar.style.display = 'none';
-      return;
-    }
+  function getSelectionBounds() {
     let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
-    let hasGroup = false;
+    let hasGroup = false, hasQnum = false;
+    const lineSet = new Set();
     selected.forEach(gid => {
       const el = document.getElementById(gid);
       if (!el) return;
       if (el.getAttribute('data-group')) hasGroup = true;
+      if (el.getAttribute('data-qnum')) hasQnum = true;
+      const lid = el.getAttribute('data-line');
+      if (lid) lineSet.add(lid);
       const r = el.getBoundingClientRect();
       if (r.width > 0 || r.height > 0) {
         if (r.left < minL) minL = r.left;
@@ -347,20 +413,58 @@
         if (r.bottom > maxB) maxB = r.bottom;
       }
     });
-    if (!isFinite(minL)) {
-      floatBar.style.display = 'none';
+    if (!isFinite(minL)) return null;
+    return { minL, minT, maxR, maxB, hasGroup, hasQnum, multiLine: lineSet.size >= 2 };
+  }
+
+  function updateTransformBox(bounds = null) {
+    if (!selected.size || (dragMode && dragMode !== 'scale' && dragMode !== 'rotate' && dragMode !== 'move') || panState) {
+      xformBox.style.display = 'none';
       return;
     }
+    if (dragMode === 'scale' || dragMode === 'rotate' || dragMode === 'move') return;
+    const b = bounds || getSelectionBounds();
+    if (!b) {
+      xformBox.style.display = 'none';
+      return;
+    }
+    const pr = paperFrame.getBoundingClientRect();
+    const pad = 4;
+    xformBox.style.transform = '';
+    xhHud.style.display = 'none';
+    xformBox.style.left = Math.round(b.minL - pr.left - pad) + 'px';
+    xformBox.style.top = Math.round(b.minT - pr.top - pad) + 'px';
+    xformBox.style.width = Math.max(14, Math.round(b.maxR - b.minL + pad * 2)) + 'px';
+    xformBox.style.height = Math.max(14, Math.round(b.maxB - b.minT + pad * 2)) + 'px';
+    xformBox.style.display = 'block';
+  }
+
+  function positionFloatBar() {
+    if (!selected.size || dragMode || panState) {
+      floatBar.style.display = 'none';
+      updateTransformBox();
+      return;
+    }
+    const b = getSelectionBounds();
+    if (!b) {
+      floatBar.style.display = 'none';
+      xformBox.style.display = 'none';
+      return;
+    }
+    updateTransformBox(b);
     document.getElementById('fb-count').textContent = `${selected.size} 字`;
-    document.getElementById('btn-sel-group').style.display = hasGroup ? '' : 'none';
+    document.getElementById('btn-sel-group').style.display = b.hasGroup ? '' : 'none';
+    document.getElementById('btn-sel-q').style.display = b.hasQnum ? '' : 'none';
+    document.getElementById('fb-multi-row').style.display = selected.size >= 2 ? 'flex' : 'none';
+    document.getElementById('fb-lines-tools').style.display = b.multiLine ? 'inline-flex' : 'none';
     floatBar.style.display = 'flex';
     const sr = stageWrap.getBoundingClientRect();
-    const bw = floatBar.offsetWidth || 440;
-    const bh = floatBar.offsetHeight || 34;
-    let left = (minL + maxR) * 0.5 - bw * 0.5;
+    const bw = floatBar.offsetWidth || 460;
+    const bh = floatBar.offsetHeight || 36;
+    let left = (b.minL + b.maxR) * 0.5 - bw * 0.5;
     left = Math.max(sr.left + 8, Math.min(sr.right - bw - 8, left));
-    let top = minT - bh - 10;
-    if (top < sr.top + 8) top = maxB + 10;
+    let top = b.minT - bh - 36;
+    if (top < sr.top + 8) top = b.maxB + 14;
     top = Math.max(sr.top + 8, Math.min(sr.bottom - bh - 8, top));
     floatBar.style.left = Math.round(left) + 'px';
     floatBar.style.top = Math.round(top) + 'px';
@@ -372,7 +476,12 @@
     });
     document.getElementById('st-sel').textContent = String(selected.size);
     const noSel = selected.size === 0;
-    ['btn-reroll', 'btn-sel-line', 'btn-sel-group', 'btn-scale-up', 'btn-scale-dn', 'btn-rot-l', 'btn-rot-r', 'btn-hide'].forEach(id => {
+    [
+      'btn-reroll', 'btn-sel-line', 'btn-sel-q', 'btn-sel-below', 'btn-sel-group',
+      'btn-scale-up', 'btn-scale-dn', 'btn-rot-l', 'btn-rot-r', 'btn-hide',
+      'btn-sp-x-dec', 'btn-sp-x-inc', 'btn-sp-y-dec', 'btn-sp-y-inc',
+      'btn-al-left', 'btn-al-center', 'btn-al-right',
+    ].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = noSel;
     });
@@ -450,6 +559,7 @@
     pageWidthMm = st.paper_width_mm || 210;
     pageHeightMm = st.paper_height_mm || 297;
     const batches = (st.batches_count !== undefined ? st.batches_count : st.edits_count) || 0;
+    const redos = st.redo_count || 0;
     editsCount = batches;
     document.getElementById('st-pack').textContent = st.pack_id || '-';
     document.getElementById('st-paper').textContent = st.paper_id || '-';
@@ -461,6 +571,7 @@
     const undoBtn = document.getElementById('btn-undo');
     undoBtn.disabled = (batches === 0);
     undoBtn.textContent = batches > 0 ? `撤销 (${batches})` : '撤销';
+    document.getElementById('btn-redo').disabled = (redos === 0);
     document.getElementById('btn-reset').disabled = (batches === 0);
     document.getElementById('btn-drift').disabled = !!st.grid_lock;
     renderAnomalies();
@@ -560,9 +671,113 @@
     }
   });
 
-  // Pointer selection & live drag-to-move
+  // Pointer selection & live drag-to-move / scale / rotate
   let startX = 0, startY = 0;
   let origTransforms = new Map();
+  let xformState = null;
+
+  function captureXformState(clientX, clientY) {
+    const b = getSelectionBounds();
+    if (!b) return null;
+    const pr = paperFrame.getBoundingClientRect();
+    const mmPerPxX = pageWidthMm / Math.max(1, pr.width);
+    const mmPerPxY = pageHeightMm / Math.max(1, pr.height);
+    const cxPx = (b.minL + b.maxR) * 0.5;
+    const cyPx = (b.minT + b.maxB) * 0.5;
+    const cxMm = (cxPx - pr.left) * mmPerPxX;
+    const cyMm = (cyPx - pr.top) * mmPerPxY;
+    origTransforms.clear();
+    selected.forEach(gid => {
+      const el = document.getElementById(gid);
+      if (el) origTransforms.set(gid, el.getAttribute('transform') || '');
+    });
+    return {
+      cxPx, cyPx, cxMm, cyMm,
+      dist0: Math.max(8, Math.hypot(clientX - cxPx, clientY - cyPx)),
+      ang0: Math.atan2(clientY - cyPx, clientX - cxPx),
+      k: 1.0, deg: 0.0,
+    };
+  }
+
+  xformBox.querySelectorAll('.xh').forEach(h => {
+    h.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || !selected.size) return;
+      e.preventDefault(); e.stopPropagation();
+      xformState = captureXformState(e.clientX, e.clientY);
+      if (!xformState) return;
+      dragMode = 'scale';
+      floatBar.style.display = 'none';
+      xhHud.style.display = 'block';
+      xhHud.textContent = '100%';
+    });
+  });
+
+  xformBox.querySelector('.xh-rot').addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || !selected.size) return;
+    e.preventDefault(); e.stopPropagation();
+    xformState = captureXformState(e.clientX, e.clientY);
+    if (!xformState) return;
+    dragMode = 'rotate';
+    floatBar.style.display = 'none';
+    xhHud.style.display = 'block';
+    xhHud.textContent = '+0.0°';
+  });
+
+  function glyphUnderPoint(cx, cy) {
+    const prev = xformBox.style.pointerEvents;
+    xformBox.style.pointerEvents = 'none';
+    const hit = document.elementFromPoint(cx, cy);
+    xformBox.style.pointerEvents = prev;
+    return hit ? hit.closest('.sc-glyph') : null;
+  }
+
+  function startMoveDrag(clientX, clientY) {
+    dragMode = 'move';
+    startX = clientX;
+    startY = clientY;
+    floatBar.style.display = 'none';
+    xhHud.style.display = 'block';
+    xhHud.textContent = '+0.0, +0.0 mm';
+    origTransforms.clear();
+    selected.forEach(gid => {
+      const el = document.getElementById(gid);
+      if (el) origTransforms.set(gid, el.getAttribute('transform') || '');
+    });
+  }
+
+  xformBox.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || !selected.size) return;
+    if (e.target.classList.contains('xh') || e.target.classList.contains('xh-rot')) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.shiftKey) {
+      const gEl = glyphUnderPoint(e.clientX, e.clientY);
+      if (gEl) {
+        if (selected.has(gEl.id)) selected.delete(gEl.id); else selected.add(gEl.id);
+        updateSelectionUI();
+      }
+      return;
+    }
+    startMoveDrag(e.clientX, e.clientY);
+  });
+
+  xformBox.addEventListener('dblclick', (e) => {
+    if (e.target.classList.contains('xh') || e.target.classList.contains('xh-rot')) return;
+    const gEl = glyphUnderPoint(e.clientX, e.clientY);
+    if (!gEl) return;
+    const grp = gEl.getAttribute('data-group');
+    if (grp) {
+      document.querySelectorAll(`.sc-glyph[data-group="${grp}"]`).forEach(el => selected.add(el.id));
+      updateSelectionUI();
+      toast(`已选中整个表格/草图（共 ${selected.size} 个图元）`);
+      return;
+    }
+    const lid = gEl.getAttribute('data-line');
+    if (lid) {
+      document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
+      updateSelectionUI();
+      toast(`已选中整行 ${lid}（共 ${selected.size} 个字）`);
+    }
+  });
 
   function selectWholeLines() {
     if (!selected.size) return;
@@ -577,6 +792,34 @@
     });
     updateSelectionUI();
     toast(`已选中整行（共 ${selected.size} 个字）`);
+  }
+
+  function selectWholeQuestion() {
+    if (!selected.size) return;
+    const qnums = new Set();
+    selected.forEach(gid => {
+      const el = document.getElementById(gid);
+      const q = el && el.getAttribute('data-qnum');
+      if (q) qnums.add(q);
+    });
+    if (!qnums.size) { toast('所选内容没有关联题号（按整行或下方选择试试）'); return; }
+    qnums.forEach(q => {
+      document.querySelectorAll(`.sc-glyph[data-qnum="${q}"]`).forEach(el => selected.add(el.id));
+    });
+    updateSelectionUI();
+    toast(`已选中整题回答（共 ${selected.size} 个字）`);
+  }
+
+  function selectBelow() {
+    const b = getSelectionBounds();
+    if (!b) return;
+    const cutoff = b.minT - 4;
+    document.querySelectorAll('.sc-glyph').forEach(g => {
+      const r = g.getBoundingClientRect();
+      if ((r.top + r.bottom) * 0.5 >= cutoff) selected.add(g.id);
+    });
+    updateSelectionUI();
+    toast(`已选中下方全部内容（共 ${selected.size} 个字）`);
   }
 
   function selectWholeGroups() {
@@ -605,20 +848,18 @@
       const isTableBorder = grp && gEl.getAttribute('data-ch') === 'table_rule';
       if (e.shiftKey) {
         if (selected.has(gEl.id)) selected.delete(gEl.id); else selected.add(gEl.id);
-      } else if (!selected.has(gEl.id)) {
+        updateSelectionUI();
+        return;
+      }
+      if (!selected.has(gEl.id)) {
         if (isTableBorder) {
           selected = new Set(Array.from(document.querySelectorAll(`.sc-glyph[data-group="${grp}"]`)).map(el => el.id));
         } else {
           selected = new Set([gEl.id]);
         }
       }
-      dragMode = 'move';
       updateSelectionUI();
-      origTransforms.clear();
-      selected.forEach(gid => {
-        const el = document.getElementById(gid);
-        if (el) origTransforms.set(gid, el.getAttribute('transform') || '');
-      });
+      startMoveDrag(e.clientX, e.clientY);
     } else {
       if (!e.shiftKey) selected.clear();
       dragMode = 'marquee';
@@ -655,16 +896,53 @@
       const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
       marqueeEl.style.left = x + 'px'; marqueeEl.style.top = y + 'px';
       marqueeEl.style.width = w + 'px'; marqueeEl.style.height = h + 'px';
+    } else if (dragMode === 'scale' && xformState && selected.size > 0) {
+      const dist = Math.hypot(e.clientX - xformState.cxPx, e.clientY - xformState.cyPx);
+      let k = Math.max(0.25, Math.min(4.0, dist / xformState.dist0));
+      if (e.shiftKey) k = Math.max(0.25, Math.round(k * 20) / 20);
+      xformState.k = k;
+      const cx = xformState.cxMm.toFixed(3), cy = xformState.cyMm.toFixed(3);
+      origTransforms.forEach((baseTf, gid) => {
+        const el = document.getElementById(gid);
+        if (el) el.setAttribute('transform', `translate(${cx},${cy}) scale(${k.toFixed(4)}) translate(-${cx},-${cy}) ${baseTf}`);
+      });
+      xformBox.style.transform = `scale(${k.toFixed(4)})`;
+      const pct = Math.round(k * 100) + '%';
+      xhHud.textContent = pct;
+      document.getElementById('st-drag').textContent = pct;
+    } else if (dragMode === 'rotate' && xformState && selected.size > 0) {
+      let deg = (Math.atan2(e.clientY - xformState.cyPx, e.clientX - xformState.cxPx) - xformState.ang0) * 180 / Math.PI;
+      while (deg > 180) deg -= 360;
+      while (deg < -180) deg += 360;
+      if (e.shiftKey) deg = Math.round(deg / 5) * 5;
+      xformState.deg = deg;
+      const cx = xformState.cxMm.toFixed(3), cy = xformState.cyMm.toFixed(3);
+      origTransforms.forEach((baseTf, gid) => {
+        const el = document.getElementById(gid);
+        if (el) el.setAttribute('transform', `rotate(${deg.toFixed(2)},${cx},${cy}) ${baseTf}`);
+      });
+      xformBox.style.transform = `rotate(${deg.toFixed(2)}deg)`;
+      const dTxt = `${deg >= 0 ? '+' : ''}${deg.toFixed(1)}°`;
+      xhHud.textContent = dTxt;
+      document.getElementById('st-drag').textContent = dTxt;
     } else if (dragMode === 'move' && selected.size > 0) {
       const pr = paperFrame.getBoundingClientRect();
       const mmPerPx = pageWidthMm / Math.max(1, pr.width);
-      const dxMm = (e.clientX - startX) * mmPerPx;
-      const dyMm = (e.clientY - startY) * mmPerPx;
+      let dxPx = e.clientX - startX, dyPx = e.clientY - startY;
+      if (e.shiftKey) {
+        if (Math.abs(dxPx) >= Math.abs(dyPx)) dyPx = 0;
+        else dxPx = 0;
+      }
+      const dxMm = dxPx * mmPerPx;
+      const dyMm = dyPx * mmPerPx;
       origTransforms.forEach((baseTf, gid) => {
         const el = document.getElementById(gid);
         if (el) el.setAttribute('transform', `translate(${dxMm.toFixed(3)},${dyMm.toFixed(3)}) ${baseTf}`);
       });
-      document.getElementById('st-drag').textContent = `${dxMm >= 0 ? '+' : ''}${dxMm.toFixed(2)}, ${dyMm >= 0 ? '+' : ''}${dyMm.toFixed(2)} mm`;
+      xformBox.style.transform = `translate(${dxPx.toFixed(1)}px, ${dyPx.toFixed(1)}px)`;
+      const dTxt = `${dxMm >= 0 ? '+' : ''}${dxMm.toFixed(2)}, ${dyMm >= 0 ? '+' : ''}${dyMm.toFixed(2)} mm` + (e.shiftKey ? ' (锁定)' : '');
+      xhHud.textContent = dTxt;
+      document.getElementById('st-drag').textContent = dTxt;
     }
   });
 
@@ -686,11 +964,44 @@
         });
       }
       updateSelectionUI();
+    } else if (mode === 'scale' && xformState && selected.size > 0) {
+      const k = xformState.k;
+      const ids = Array.from(selected);
+      xformState = null;
+      xformBox.style.transform = '';
+      xhHud.style.display = 'none';
+      if (Math.abs(k - 1.0) > 0.015) {
+        await sendOp({ op: 'scale', ids, k: Number(k.toFixed(4)), about: ids.length > 1 ? 'selection' : 'center' });
+      } else {
+        origTransforms.forEach((baseTf, gid) => { const el = document.getElementById(gid); if (el) el.setAttribute('transform', baseTf); });
+        positionFloatBar();
+      }
+      origTransforms.clear();
+    } else if (mode === 'rotate' && xformState && selected.size > 0) {
+      const deg = xformState.deg;
+      const ids = Array.from(selected);
+      xformState = null;
+      xformBox.style.transform = '';
+      xhHud.style.display = 'none';
+      if (Math.abs(deg) > 0.3) {
+        await sendOp({ op: 'rotate', ids, deg: Number(deg.toFixed(2)), about: ids.length > 1 ? 'selection' : 'center' });
+      } else {
+        origTransforms.forEach((baseTf, gid) => { const el = document.getElementById(gid); if (el) el.setAttribute('transform', baseTf); });
+        positionFloatBar();
+      }
+      origTransforms.clear();
     } else if (mode === 'move' && selected.size > 0) {
       const pr = paperFrame.getBoundingClientRect();
       const mmPerPx = pageWidthMm / Math.max(1, pr.width);
-      const dxMm = (e.clientX - startX) * mmPerPx;
-      const dyMm = (e.clientY - startY) * mmPerPx;
+      let dxPx = e.clientX - startX, dyPx = e.clientY - startY;
+      if (e.shiftKey) {
+        if (Math.abs(dxPx) >= Math.abs(dyPx)) dyPx = 0;
+        else dxPx = 0;
+      }
+      const dxMm = dxPx * mmPerPx;
+      const dyMm = dyPx * mmPerPx;
+      xformBox.style.transform = '';
+      xhHud.style.display = 'none';
       if (Math.hypot(dxMm, dyMm) > 0.15) {
         await sendOp({ op: 'move', ids: Array.from(selected), dx: dxMm, dy: dyMm });
       } else {
@@ -735,6 +1046,72 @@
     }, 220);
   }
 
+  let scaleAcc = { k: 1.0, timer: null, baseMap: new Map(), ids: null, cxMm: 0, cyMm: 0 };
+  function queueScale(factor) {
+    if (!selected.size) { toast('请先选中字'); return; }
+    if (!scaleAcc.timer) {
+      const b = getSelectionBounds();
+      if (!b) return;
+      const pr = paperFrame.getBoundingClientRect();
+      scaleAcc.cxMm = (((b.minL + b.maxR) * 0.5) - pr.left) * (pageWidthMm / Math.max(1, pr.width));
+      scaleAcc.cyMm = (((b.minT + b.maxB) * 0.5) - pr.top) * (pageHeightMm / Math.max(1, pr.height));
+      scaleAcc.k = 1.0;
+      scaleAcc.ids = Array.from(selected);
+      scaleAcc.baseMap.clear();
+      scaleAcc.ids.forEach(gid => { const el = document.getElementById(gid); if (el) scaleAcc.baseMap.set(gid, el.getAttribute('transform') || ''); });
+    }
+    scaleAcc.k = Math.max(0.25, Math.min(4.0, scaleAcc.k * factor));
+    const cx = scaleAcc.cxMm.toFixed(3), cy = scaleAcc.cyMm.toFixed(3);
+    scaleAcc.baseMap.forEach((baseTf, gid) => {
+      const el = document.getElementById(gid);
+      if (el) el.setAttribute('transform', `translate(${cx},${cy}) scale(${scaleAcc.k.toFixed(4)}) translate(-${cx},-${cy}) ${baseTf}`);
+    });
+    document.getElementById('st-drag').textContent = Math.round(scaleAcc.k * 100) + '%';
+    positionFloatBar();
+    clearTimeout(scaleAcc.timer);
+    scaleAcc.timer = setTimeout(async () => {
+      const { k, ids } = scaleAcc;
+      scaleAcc.timer = null; scaleAcc.k = 1.0; scaleAcc.baseMap.clear();
+      document.getElementById('st-drag').textContent = '-';
+      if (ids && ids.length && Math.abs(k - 1.0) > 0.01) {
+        await sendOp({ op: 'scale', ids, k: Number(k.toFixed(4)), about: ids.length > 1 ? 'selection' : 'center' });
+      }
+    }, 260);
+  }
+
+  let rotAcc = { deg: 0.0, timer: null, baseMap: new Map(), ids: null, cxMm: 0, cyMm: 0 };
+  function queueRotate(deltaDeg) {
+    if (!selected.size) { toast('请先选中字'); return; }
+    if (!rotAcc.timer) {
+      const b = getSelectionBounds();
+      if (!b) return;
+      const pr = paperFrame.getBoundingClientRect();
+      rotAcc.cxMm = (((b.minL + b.maxR) * 0.5) - pr.left) * (pageWidthMm / Math.max(1, pr.width));
+      rotAcc.cyMm = (((b.minT + b.maxB) * 0.5) - pr.top) * (pageHeightMm / Math.max(1, pr.height));
+      rotAcc.deg = 0.0;
+      rotAcc.ids = Array.from(selected);
+      rotAcc.baseMap.clear();
+      rotAcc.ids.forEach(gid => { const el = document.getElementById(gid); if (el) rotAcc.baseMap.set(gid, el.getAttribute('transform') || ''); });
+    }
+    rotAcc.deg += deltaDeg;
+    const cx = rotAcc.cxMm.toFixed(3), cy = rotAcc.cyMm.toFixed(3);
+    rotAcc.baseMap.forEach((baseTf, gid) => {
+      const el = document.getElementById(gid);
+      if (el) el.setAttribute('transform', `rotate(${rotAcc.deg.toFixed(2)},${cx},${cy}) ${baseTf}`);
+    });
+    document.getElementById('st-drag').textContent = `${rotAcc.deg >= 0 ? '+' : ''}${rotAcc.deg.toFixed(1)}°`;
+    positionFloatBar();
+    clearTimeout(rotAcc.timer);
+    rotAcc.timer = setTimeout(async () => {
+      const { deg, ids } = rotAcc;
+      rotAcc.timer = null; rotAcc.deg = 0.0; rotAcc.baseMap.clear();
+      document.getElementById('st-drag').textContent = '-';
+      if (ids && ids.length && Math.abs(deg) > 0.2) {
+        await sendOp({ op: 'rotate', ids, deg: Number(deg.toFixed(2)), about: ids.length > 1 ? 'selection' : 'center' });
+      }
+    }, 260);
+  }
+
   async function doReroll() {
     if (!selected.size) { toast('请先点击或框选要换写法的字'); return; }
     const res = await sendOp({ op: 'reroll', ids: Array.from(selected) });
@@ -753,12 +1130,19 @@
       }
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault();
       if (editsCount === 0) { toast('没有可撤销的操作'); return; }
       await api('/api/undo', 'POST', {});
       await refreshPage();
       toast('已撤销上一步');
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+      e.preventDefault();
+      const rr = await api('/api/redo', 'POST', {});
+      await refreshPage();
+      toast(rr.restored ? '已重做上一步' : '没有可重做的操作');
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
@@ -788,12 +1172,14 @@
     else if (e.key === 'ArrowUp') { e.preventDefault(); queueNudge(0, -step); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); queueNudge(0, step); }
     else if (e.key.toLowerCase() === 'l') { selectWholeLines(); }
+    else if (e.key.toLowerCase() === 'q') { selectWholeQuestion(); }
+    else if (e.key.toLowerCase() === 'b') { selectBelow(); }
     else if (e.key.toLowerCase() === 'g') { selectWholeGroups(); }
     else if (e.key.toLowerCase() === 'r') { await doReroll(); }
-    else if (e.key === '+' || e.key === '=') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }); }
-    else if (e.key === '-') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }); }
-    else if (e.key === ']') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }); }
-    else if (e.key === '[') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }); }
+    else if (e.key === '+' || e.key === '=') { e.preventDefault(); queueScale(e.shiftKey ? 1.15 : 1.06); }
+    else if (e.key === '-') { e.preventDefault(); queueScale(e.shiftKey ? 0.87 : 0.94); }
+    else if (e.key === ']') { e.preventDefault(); queueRotate(e.shiftKey ? 5.0 : 2.0); }
+    else if (e.key === '[') { e.preventDefault(); queueRotate(e.shiftKey ? -5.0 : -2.0); }
     else if (e.key === 'Delete' || e.key === 'Backspace') { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); updateSelectionUI(); toast('已隐藏选中字'); }
   });
 
@@ -808,16 +1194,26 @@
   };
   document.getElementById('btn-reroll').onclick = doReroll;
   document.getElementById('btn-sel-line').onclick = selectWholeLines;
+  document.getElementById('btn-sel-q').onclick = selectWholeQuestion;
+  document.getElementById('btn-sel-below').onclick = selectBelow;
   document.getElementById('btn-sel-group').onclick = selectWholeGroups;
-  document.getElementById('btn-scale-up').onclick = () => selected.size ? sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }) : toast('请先选中字');
-  document.getElementById('btn-scale-dn').onclick = () => selected.size ? sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }) : toast('请先选中字');
-  document.getElementById('btn-rot-l').onclick = () => selected.size ? sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }) : toast('请先选中字');
-  document.getElementById('btn-rot-r').onclick = () => selected.size ? sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }) : toast('请先选中字');
+  document.getElementById('btn-sp-x-dec').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'spacing', ids: Array.from(selected), axis: 'x', delta_mm: -0.45 }); toast('已收紧字距'); } };
+  document.getElementById('btn-sp-x-inc').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'spacing', ids: Array.from(selected), axis: 'x', delta_mm: 0.45 }); toast('已拉宽字距'); } };
+  document.getElementById('btn-sp-y-dec').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'spacing', ids: Array.from(selected), axis: 'y', delta_mm: -1.2 }); toast('已缩小行距'); } };
+  document.getElementById('btn-sp-y-inc').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'spacing', ids: Array.from(selected), axis: 'y', delta_mm: 1.2 }); toast('已增大行距'); } };
+  document.getElementById('btn-al-left').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'align', ids: Array.from(selected), mode: 'left' }); toast('已左缘对齐'); } };
+  document.getElementById('btn-al-center').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'align', ids: Array.from(selected), mode: 'center' }); toast('已居中对齐'); } };
+  document.getElementById('btn-al-right').onclick = async () => { if (selected.size >= 2) { await sendOp({ action: 'align', ids: Array.from(selected), mode: 'right' }); toast('已右缘对齐'); } };
+  document.getElementById('btn-scale-up').onclick = () => queueScale(1.08);
+  document.getElementById('btn-scale-dn').onclick = () => queueScale(0.92);
+  document.getElementById('btn-rot-l').onclick = () => queueRotate(-3.0);
+  document.getElementById('btn-rot-r').onclick = () => queueRotate(3.0);
   document.getElementById('btn-hide').onclick = async () => { if (selected.size) { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); updateSelectionUI(); toast('已隐藏选中字'); } else { toast('请先选中要隐藏的字'); } };
   document.getElementById('btn-tighten').onclick = async () => { const r = await sendOp({ action: 'tighten' }); if (r) toast(r.added ? `已收拢 ${r.added} 处空隙` : '当前没有明显过宽的空隙'); };
   document.getElementById('btn-drift').onclick = async () => { const r = await sendOp({ action: 'drift', force: true }); if (r) toast('已应用自然右漂'); };
   document.getElementById('chk-inspect').onchange = (e) => { showOverlay = e.target.checked; renderAnomalies(); };
   document.getElementById('btn-undo').onclick = async () => { await api('/api/undo', 'POST', {}); await refreshPage(); toast('已撤销上一步'); };
+  document.getElementById('btn-redo').onclick = async () => { const r = await api('/api/redo', 'POST', {}); await refreshPage(); if (r.restored) toast('已重做上一步'); };
   document.getElementById('btn-reset').onclick = async () => { await api('/api/reset', 'POST', {}); selected.clear(); await refreshPage(); toast('已还原全部修改'); };
   document.querySelectorAll('.swatch').forEach(btn => {
     btn.onclick = async () => {

@@ -186,8 +186,25 @@ def resolve_scene_state(scene: dict, edits: List[dict]) -> dict:
 
         elif kind == "rotate":
             deg = float(op.get("deg", 0.0))
-            for g in targets:
-                g["rot"] = round(g.get("rot", 0.0) + deg, 2)
+            about = op.get("about", "anchor")
+            if about == "selection" and len(targets) > 1:
+                cx = 0.5 * (min(g["x"] for g in targets) + max(g["x"] + g["w"] for g in targets))
+                cy = 0.5 * (min(g["y"] for g in targets) + max(g["y"] + g["h"] for g in targets))
+                rad = math.radians(deg)
+                cos_a, sin_a = math.cos(rad), math.sin(rad)
+                for g in targets:
+                    gcx = g["x"] + g["w"] * 0.5
+                    gcy = g["y"] + g["h"] * 0.5
+                    dx = gcx - cx
+                    dy = gcy - cy
+                    ncx = cx + dx * cos_a - dy * sin_a
+                    ncy = cy + dx * sin_a + dy * cos_a
+                    g["x"] = round(ncx - g["w"] * 0.5, 4)
+                    g["y"] = round(ncy - g["h"] * 0.5, 4)
+                    g["rot"] = round(g.get("rot", 0.0) + deg, 2)
+            else:
+                for g in targets:
+                    g["rot"] = round(g.get("rot", 0.0) + deg, 2)
 
         elif kind == "reroll":
             for g in targets:

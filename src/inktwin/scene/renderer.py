@@ -111,7 +111,9 @@ def render_page_svg(page_idx: int, resolved: dict, transparent: bool = False) ->
 
         grp = rigid_groups.get(str(g.get("id", "")), "")
         grp_attr = f' data-group="{html.escape(grp, quote=True)}"' if grp else ""
-        parts.append(f'<g class="sc-glyph" id="{gid}" data-line="{line_id}" data-ch="{ch_attr}"{grp_attr} transform="{tf}">')
+        qnum_raw = str(g.get("qnum", "") or "")
+        qnum_attr = f' data-qnum="{html.escape(qnum_raw, quote=True)}"' if qnum_raw else ""
+        parts.append(f'<g class="sc-glyph" id="{gid}" data-line="{line_id}" data-ch="{ch_attr}"{grp_attr}{qnum_attr} transform="{tf}">')
         for p in g.get("paths", []):
             d = p.get("d", "")
             if not d:
