@@ -212,6 +212,9 @@ def resolve_scene_state(scene: dict, edits: List[dict]) -> dict:
             for g in targets:
                 if col:
                     g["color"] = col
+                    for p in g.get("paths", []):
+                        if isinstance(p, dict) and "color" in p:
+                            p["color"] = col
                 if w_val is not None:
                     g["sw_add"] = round(float(w_val) * 0.25, 3)
 

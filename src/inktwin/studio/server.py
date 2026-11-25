@@ -592,6 +592,39 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                     extra_headers={"Content-Disposition": f'attachment; filename="{fname}"'},
                 )
                 return
+            if clean == "/api/template/preview":
+                from urllib.parse import parse_qs, urlparse
+
+                qs = parse_qs(urlparse(self.path).query)
+                tier = (qs.get("tier") or ["tier1"])[0].lower()
+                if tier not in ("tier1", "tier2"):
+                    self._json({"ok": False, "error": f"invalid static tier: {tier}"}, 400)
+                    return
+                fname = "InkTwin-Tier1.pdf" if tier == "tier1" else "InkTwin-Tier2.pdf"
+                static_pdf = TEMPLATES_DIR / fname
+                with st.lock:
+                    try:
+                        if static_pdf.is_file():
+                            src_pdf = static_pdf
+                        else:
+                            src_pdf = st.workdir / fname
+                            if not src_pdf.is_file():
+                                generate_template_pdf(src_pdf, tier=tier)
+                        previews = _pdf_previews(src_pdf, dpi=110, max_pages=5)
+                    except Exception as exc:
+                        self._json({"ok": False, "error": str(exc)}, 500)
+                        return
+                self._json(
+                    {
+                        "ok": True,
+                        "tier": tier,
+                        "filename": fname,
+                        "download_url": f"/api/template/download?tier={tier}",
+                        "pages": len(previews),
+                        "previews": previews,
+                    }
+                )
+                return
             if clean.startswith("/files/"):
                 rel = clean[len("/files/"):]
                 from urllib.parse import unquote

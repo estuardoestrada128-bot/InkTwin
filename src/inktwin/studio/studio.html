@@ -39,9 +39,30 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
   .out { margin-top: 10px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; color: var(--muted); max-height: 220px; overflow: auto; background: #fafbfc; border-radius: 8px; padding: 8px; }
   .thumbs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  .thumbs img { width: 140px; border: 1px solid var(--line); border-radius: 6px; }
+  .thumbs img { width: 140px; border: 1px solid var(--line); border-radius: 6px; cursor: zoom-in; }
+  .pv-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pv-bar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
   .pages { display: flex; flex-direction: column; gap: 14px; align-items: center; }
-  .pages img { width: 100%; max-width: 760px; box-shadow: 0 2px 14px rgba(20,30,60,.12); border-radius: 4px; background: #fff; }
+  .pages img { width: 760px; max-width: none; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; }
+  .checker { background-image: linear-gradient(45deg, #e2e5ec 25%, transparent 25%), linear-gradient(-45deg, #e2e5ec 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e5ec 75%), linear-gradient(-45deg, transparent 75%, #e2e5ec 75%); background-size: 14px 14px; background-position: 0 0, 0 7px, 7px -7px, -7px 0; background-color: #f8f9fb; }
+  .exp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(125px, 1fr)); gap: 8px; margin-top: 10px; }
+  .exp-card { border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: #fff; text-align: center; }
+  .exp-card .thumb { width: 100%; height: 140px; object-fit: contain; border-radius: 5px; border: 1px solid var(--line); cursor: zoom-in; display: block; margin-bottom: 5px; }
+  .exp-card .ec-act { display: flex; justify-content: center; gap: 6px; font-size: 12px; }
+  .exp-card .ec-act a, .exp-card .ec-act button { color: var(--accent); background: none; border: 0; padding: 2px 4px; cursor: pointer; text-decoration: none; font: inherit; }
+  .font-pv { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fafbfd; }
+  .font-pv textarea { min-height: 76px; font-size: 28px; line-height: 1.45; font-feature-settings: "calt" 1; background: #fff; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(16,20,30,.72); z-index: 80; display: none; flex-direction: column; }
+  .modal-bg.open { display: flex; }
+  .modal-bar { display: flex; align-items: center; gap: 8px; padding: 10px 18px; background: #1d2230; color: #fff; }
+  .modal-bar b { font-size: 14px; margin-right: auto; }
+  .modal-bar .btn { background: #2d3447; color: #fff; border-color: #414b63; padding: 5px 11px; font-size: 12.5px; }
+  .modal-bar .btn.primary { background: var(--accent); border-color: var(--accent); }
+  .modal-body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .modal-body img { width: 780px; max-width: none; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; }
+  .modal-body img.checker { background-color: #f8f9fb; }
+  .modal-body iframe { width: min(980px, 92vw); height: calc(100vh - 96px); border: 0; border-radius: 6px; background: #fff; }
   .lay-pages { display: flex; gap: 14px; flex-wrap: wrap; }
   .lay-page { position: relative; width: 330px; border: 1px solid var(--line); border-radius: 4px; background: #fff; user-select: none; }
   .lay-page img { width: 100%; display: block; pointer-events: none; }
@@ -106,7 +127,11 @@
         <p class="desc">标准字帖人人相同，直接点下面下载即可；导进平板（StarNote / GoodNotes）用深色笔填满蓝框，导出为矢量 PDF。</p>
         <div class="actions" style="margin-top:6px">
           <a class="btn primary" href="/api/template/download?tier=tier1" download="InkTwin-Tier1.pdf">⬇ Tier 1 基础字帖（3 页）</a>
+          <button class="btn" data-tpl-pv="tier1" title="在线预览 Tier 1 字帖内容">👁 预览</button>
+        </div>
+        <div class="actions" style="margin-top:8px">
           <a class="btn" href="/api/template/download?tier=tier2" download="InkTwin-Tier2.pdf">⬇ Tier 2 进阶物理/希腊字母（1 页）</a>
+          <button class="btn" data-tpl-pv="tier2" title="在线预览 Tier 2 字帖内容">👁 预览</button>
         </div>
         <hr style="border:0;border-top:1px dashed var(--line);margin:14px 0 10px" />
         <label>按需生成补字帖（填想补的字；留空则自动按「排版」页缺字生成）</label>
@@ -138,6 +163,13 @@
         <input id="fb-name" type="text" placeholder="InkTwin-My-Hand" />
         <div class="actions"><button class="btn primary" id="btn-fb">编译字体</button></div>
         <div id="fb-out" class="files"></div>
+        <div id="fb-pv" class="font-pv" hidden>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:12px;color:var(--muted)">
+            <span>字体实测预览（已启用 calt 多变体轮换，可直接打字测试）</span>
+            <label style="margin:0;display:flex;align-items:center;gap:4px">字号 <input id="fb-pv-size" type="range" min="18" max="54" value="28" style="width:72px" /></label>
+          </div>
+          <textarea id="fb-pv-text">000 111 222 aaa bbb f(x)=x^2+1 微积分概率论</textarea>
+        </div>
       </div>
     </div>
 
@@ -225,7 +257,18 @@
   <!-- ========== Preview ========== -->
   <section id="tab-preview" class="tab">
     <div class="grid" style="grid-template-columns: minmax(420px, 2fr) minmax(300px, 1fr);">
-      <div class="card"><div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div></div>
+      <div class="card">
+        <div class="pv-bar">
+          <button class="btn" id="btn-pv-zout" title="缩小 PDF 预览">−</button>
+          <span id="pv-zoom-lbl" style="min-width:44px;text-align:center;font-size:13px">100%</span>
+          <button class="btn" id="btn-pv-zin" title="放大 PDF 预览">+</button>
+          <button class="btn" id="btn-pv-zfit">适应宽度</button>
+          <span class="hint">在预览区按住 <b>Ctrl + 滚轮</b> 可单独缩放 PDF（不会缩放整个网页）</span>
+        </div>
+        <div id="pages-vp" class="pages-vp">
+          <div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div>
+        </div>
+      </div>
       <div class="grid" style="align-content:start">
         <div class="card">
           <h2>版面体检与微调</h2>
@@ -258,11 +301,22 @@
   </section>
 </main>
 <div id="toast" class="toast"></div>
+<div id="pv-modal" class="modal-bg">
+  <div class="modal-bar">
+    <b id="pm-title">预览</b>
+    <button class="btn" id="pm-zout">−</button>
+    <span id="pm-zlbl" style="min-width:44px;text-align:center;font-size:12.5px">100%</span>
+    <button class="btn" id="pm-zin">+</button>
+    <a class="btn primary" id="pm-dl" href="#" download style="display:none">⬇ 下载</a>
+    <button class="btn" id="pm-close">关闭 (Esc)</button>
+  </div>
+  <div id="pm-body" class="modal-body"></div>
+</div>
 
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60 };
+const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0, lastPdfUrl: null };
 
 const SAMPLE_MD = `---
 title: 微积分作业 W3
@@ -370,12 +424,94 @@ $('#hv-merge').onchange = () => {
   else if (pk) $('#hv-id').value = pk.id + '_custom';
 };
 
+/* ---------------- Lightbox Preview Modal & Independent Zoom ---------------- */
+function applyModalZoom(z, anchorX = null, anchorY = null) {
+  const body = $('#pm-body');
+  const clamped = Math.max(0.4, Math.min(3.5, Math.round(z * 100) / 100));
+  const ratio = clamped / S.modalZoom;
+  S.modalZoom = clamped;
+  $('#pm-zlbl').textContent = Math.round(clamped * 100) + '%';
+  $$('#pm-body img').forEach(im => im.style.width = Math.round(780 * clamped) + 'px');
+  if (anchorX !== null && ratio !== 1) {
+    const r = body.getBoundingClientRect();
+    body.scrollLeft = (body.scrollLeft + anchorX - r.left) * ratio - (anchorX - r.left);
+    body.scrollTop = (body.scrollTop + anchorY - r.top) * ratio - (anchorY - r.top);
+  }
+}
+
+function openImageModal(title, urls, { downloadUrl = null, downloadName = '', checker = false } = {}) {
+  $('#pm-title').textContent = title;
+  const dl = $('#pm-dl');
+  if (downloadUrl) { dl.href = downloadUrl; dl.download = downloadName || ''; dl.style.display = 'inline-block'; }
+  else { dl.style.display = 'none'; }
+  $('#pm-zout').style.display = $('#pm-zin').style.display = $('#pm-zlbl').style.display = '';
+  S.modalZoom = 1.0;
+  $('#pm-zlbl').textContent = '100%';
+  $('#pm-body').innerHTML = urls.map((u, i) => `<img src="${u}" class="${checker ? 'checker' : ''}" alt="page ${i + 1}" />`).join('');
+  $('#pv-modal').classList.add('open');
+}
+
+function openPdfModal(title, pdfUrl, downloadName = 'InkTwin-Output.pdf') {
+  $('#pm-title').textContent = title;
+  const dl = $('#pm-dl');
+  dl.href = pdfUrl; dl.download = downloadName; dl.style.display = 'inline-block';
+  $('#pm-zout').style.display = $('#pm-zin').style.display = $('#pm-zlbl').style.display = 'none';
+  $('#pm-body').innerHTML = `<iframe src="${pdfUrl}"></iframe>`;
+  $('#pv-modal').classList.add('open');
+}
+
+$('#pm-close').onclick = () => $('#pv-modal').classList.remove('open');
+$('#pv-modal').onclick = (e) => { if (e.target === $('#pv-modal') || e.target === $('#pm-body')) $('#pv-modal').classList.remove('open'); };
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#pv-modal').classList.remove('open'); });
+$('#pm-zin').onclick = () => applyModalZoom(S.modalZoom * 1.2);
+$('#pm-zout').onclick = () => applyModalZoom(S.modalZoom / 1.2);
+$('#pm-body').addEventListener('wheel', (e) => {
+  if ((e.ctrlKey || e.metaKey) && $$('#pm-body img').length) {
+    e.preventDefault();
+    applyModalZoom(S.modalZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+  }
+}, { passive: false });
+
+function applyPreviewZoom(z, anchorX = null, anchorY = null) {
+  const vp = $('#pages-vp');
+  const clamped = Math.max(0.4, Math.min(3.0, Math.round(z * 100) / 100));
+  const ratio = clamped / S.previewZoom;
+  S.previewZoom = clamped;
+  $('#pv-zoom-lbl').textContent = Math.round(clamped * 100) + '%';
+  $$('#pages img').forEach(im => im.style.width = Math.round(760 * clamped) + 'px');
+  if (anchorX !== null && ratio !== 1) {
+    const r = vp.getBoundingClientRect();
+    vp.scrollLeft = (vp.scrollLeft + anchorX - r.left) * ratio - (anchorX - r.left);
+    vp.scrollTop = (vp.scrollTop + anchorY - r.top) * ratio - (anchorY - r.top);
+  }
+}
+
+$('#btn-pv-zin').onclick = () => applyPreviewZoom(S.previewZoom * 1.2);
+$('#btn-pv-zout').onclick = () => applyPreviewZoom(S.previewZoom / 1.2);
+$('#btn-pv-zfit').onclick = () => {
+  const avail = Math.max(320, $('#pages-vp').clientWidth - 40);
+  applyPreviewZoom(avail / 760);
+};
+$('#pages-vp').addEventListener('wheel', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    applyPreviewZoom(S.previewZoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+  }
+}, { passive: false });
+
 /* ---------------- Forge ---------------- */
+$$('[data-tpl-pv]').forEach(btn => btn.onclick = (e) => busy(e.currentTarget, async () => {
+  const tier = btn.dataset.tplPv;
+  const j = await api(`/api/template/preview?tier=${tier}`);
+  openImageModal(`${j.filename}（共 ${j.pages} 页）`, j.previews, { downloadUrl: j.download_url, downloadName: j.filename });
+}));
+
 $('#btn-tpl').onclick = (e) => busy(e.currentTarget, async () => {
   const packId = $('#vi-pack').value || $('#opt-pack').value;
   const j = await api('/api/template', { tier: 'targeted', chars: $('#tpl-chars').value.trim(), markdown: $('#md').value, pack: packId });
-  $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" download="InkTwin-Targeted.pdf">下载补字帖 PDF（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
-  $('#tpl-thumbs').innerHTML = j.previews.map(s => `<img src="${s}">`).join('');
+  $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" download="InkTwin-Targeted.pdf">⬇ 下载补字帖 PDF（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
+  $('#tpl-thumbs').innerHTML = j.previews.map((s, idx) => `<img src="${s}" title="点击放大预览第 ${idx + 1} 页">`).join('');
+  $$('#tpl-thumbs img').forEach(im => im.onclick = () => openImageModal(`自定义补字帖（共 ${j.result.pages} 页）`, j.previews, { downloadUrl: j.pdf_url, downloadName: 'InkTwin-Targeted.pdf' }));
   const a = document.createElement('a'); a.href = j.pdf_url; a.download = 'InkTwin-Targeted.pdf'; a.click();
 });
 
@@ -396,10 +532,24 @@ $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/fontbuild', { pack: $('#fb-pack').value, format: $('#fb-fmt').value, name: $('#fb-name').value.trim() });
   const r = j.result;
   const fname = `${r.family}.${r.format}`;
-  $('#fb-out').innerHTML = `<a href="${j.font_url}" download="${escHtml(fname)}">下载 ${escHtml(fname)}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
+  $('#fb-out').innerHTML = `<a href="${j.font_url}" download="${escHtml(fname)}">⬇ 下载 ${escHtml(fname)}（${r.mapped_chars} 字 · calt ${r.calt_alt1_pairs}/${r.calt_alt2_triples}）</a>`;
+  const fam = `InkTwinPreview_${Date.now()}`;
+  const ff = new FontFace(fam, `url(${j.font_url})`);
+  try {
+    await ff.load();
+    document.fonts.add(ff);
+    $('#fb-pv').hidden = false;
+    $('#fb-pv-text').style.fontFamily = `'${fam}', sans-serif`;
+  } catch (err) {
+    console.warn('FontFace preview failed:', err);
+  }
   const a = document.createElement('a'); a.href = j.font_url; a.download = fname; a.click();
-  toast('编译完成，已开始下载：' + fname);
+  toast('编译完成，已开始下载并在下方生成实时字体预览：' + fname);
 });
+
+$('#fb-pv-size').oninput = () => {
+  $('#fb-pv-text').style.fontSize = $('#fb-pv-size').value + 'px';
+};
 
 const STRUCT_NAMES = {
   '__FRAC_SHORT__': '短分线', '__FRAC_MED__': '中分线', '__FRAC_LONG__': '长分线',
@@ -673,7 +823,9 @@ function renderLayoutEditor() {
 /* ---------------- Preview ---------------- */
 function showSnapshot(j) {
   $$('.need-render').forEach(b => b.disabled = false);
-  $('#pages').innerHTML = j.previews.map((s, i) => `<img src="${s}" alt="page ${i + 1}">`).join('');
+  S.lastPdfUrl = j.pdf_url;
+  const wPx = Math.round(760 * S.previewZoom);
+  $('#pages').innerHTML = j.previews.map((s, i) => `<img src="${s}" style="width:${wPx}px" alt="page ${i + 1}">`).join('');
   const ins = j.inspect, ac = ins.anomaly_counts || {};
   const row = (k, label, crit) => { const v = ac[k] || 0; const cls = v === 0 ? 'ok' : (crit ? 'bad' : 'warn'); return `<div class="stat"><span>${label}</span><b class="${cls}">${v}</b></div>`; };
   $('#insp').innerHTML =
@@ -682,7 +834,9 @@ function showSnapshot(j) {
     row('overlap', '墨迹重叠', false) + row('gap', '大空隙', false) + row('left_edges_aligned', '左边缘过齐', false) +
     `<div class="stat"><span>已追加编辑</span><b>${j.edits_count}</b></div>` +
     (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '') +
-    `<div class="files"><a href="${j.pdf_url}" target="_blank">在新标签页预览当前 PDF ↗</a></div>`;
+    `<div class="files"><a href="#" id="lnk-pv-pdf">👁 弹窗预览当前 PDF</a><a href="${j.pdf_url}" target="_blank">在新标签页打开当前 PDF ↗</a></div>`;
+  const pvLnk = $('#lnk-pv-pdf');
+  if (pvLnk) pvLnk.onclick = (ev) => { ev.preventDefault(); openPdfModal('当前手写 PDF 预览', j.pdf_url, 'InkTwin-Output.pdf'); };
 }
 
 $$('[data-op]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
@@ -698,15 +852,24 @@ $('#btn-repen').onclick = (e) => busy(e.currentTarget, async () => {
 $$('[data-export]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   const fmt = b.dataset.export;
   const j = await api('/api/scene/export', { format: fmt, transparent: fmt !== 'pdf' });
-  $('#exp-out').innerHTML = j.files.map(f => {
-    const fn = f.split('/').pop();
-    return `<a href="${f}" download="${escHtml(fn)}">⬇ 下载 ${escHtml(fn)}</a>`;
-  }).join('');
-  if (j.files.length === 1) {
-    const a = document.createElement('a'); a.href = j.files[0]; a.download = j.files[0].split('/').pop(); a.click();
-    toast('已导出并开始下载：' + a.download);
+  const box = $('#exp-out');
+  if (fmt === 'pdf' && j.files.length) {
+    const f = j.files[0], fn = f.split('/').pop();
+    box.innerHTML = `<div class="actions" style="margin-top:8px"><button class="btn" id="btn-exp-pv-pdf">👁 在线预览导出的 PDF</button><a class="btn primary" href="${f}" download="${escHtml(fn)}">⬇ 下载 ${escHtml(fn)}</a></div>`;
+    $('#btn-exp-pv-pdf').onclick = () => openPdfModal(`导出预览 · ${fn}`, f, fn);
+    openPdfModal(`导出预览 · ${fn}`, f, fn);
+    toast('已导出 PDF，可预览或点击右上角下载');
   } else {
-    toast(`已导出 ${j.files.length} 页，点击下方链接下载`);
+    box.innerHTML = `<div class="exp-grid">` + j.files.map((f, idx) => {
+      const fn = f.split('/').pop();
+      return `<div class="exp-card"><img class="thumb checker" src="${f}" data-pv-idx="${idx}" title="点击放大预览" /><div style="font-size:11px;color:var(--muted);margin-bottom:3px">第 ${idx + 1} 页 (${fmt.toUpperCase()})</div><div class="ec-act"><button data-pv-idx="${idx}">👁 预览</button><a href="${f}" download="${escHtml(fn)}">⬇ 下载</a></div></div>`;
+    }).join('') + `</div>`;
+    $$('#exp-out [data-pv-idx]').forEach(el => el.onclick = () => {
+      const i = parseInt(el.dataset.pvIdx, 10);
+      const f = j.files[i], fn = f.split('/').pop();
+      openImageModal(`透明 ${fmt.toUpperCase()} 图层 · 第 ${i + 1} 页`, [f], { downloadUrl: f, downloadName: fn, checker: true });
+    });
+    toast(`已导出 ${j.files.length} 页透明 ${fmt.toUpperCase()} 图层，点缩略图可放大预览或下载`);
   }
 }));
 

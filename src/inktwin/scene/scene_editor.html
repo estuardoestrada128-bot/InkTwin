@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>InkTwin Scene Editor (Offline)</title>
+<title>InkTwin 逐字微调编辑器</title>
 <style>
   :root {
     --bg: #17191e;
@@ -19,7 +19,7 @@
     margin: 0;
     background: var(--bg);
     color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -32,17 +32,17 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-size: 13px;
   }
-  .brand { font-weight: 700; color: #fff; margin-right: 6px; letter-spacing: 0.3px; }
+  .brand { font-weight: 700; color: #fff; margin-right: 4px; letter-spacing: 0.3px; }
   .sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
   button {
     background: #2c313c;
     color: var(--text);
     border: 1px solid #3c4352;
     border-radius: 6px;
-    padding: 5px 10px;
+    padding: 5px 9px;
     font-size: 12px;
     cursor: pointer;
     transition: background 0.12s;
@@ -51,18 +51,12 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.primary:hover { background: #3b7be8; }
   button.active { outline: 2px solid var(--accent); }
-  .swatch {
-    width: 18px; height: 18px; border-radius: 50%; padding: 0; border: 2px solid #fff3;
-  }
-  main {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-  }
+  .swatch { width: 18px; height: 18px; border-radius: 50%; padding: 0; border: 2px solid #fff4; }
+  main { flex: 1; display: flex; overflow: hidden; }
   #stage-wrap {
     flex: 1;
     overflow: auto;
-    padding: 22px;
+    padding: 24px;
     display: flex;
     justify-content: center;
     align-items: flex-start;
@@ -73,16 +67,21 @@
     background: #fff;
     box-shadow: 0 12px 36px rgba(0,0,0,0.45);
     user-select: none;
+    flex-shrink: 0;
   }
-  #paper-frame svg {
-    display: block;
-    width: 794px;
-    height: auto;
+  #bg-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    display: none;
   }
+  #svg-host { position: relative; z-index: 1; }
+  #svg-host svg { display: block; height: auto; }
   .sc-glyph { cursor: grab; }
-  .sc-glyph.selected path {
-    filter: drop-shadow(0 0 1.4px rgba(76, 141, 255, 0.95));
-  }
+  .sc-glyph:hover .sc-hit { fill: rgba(76, 141, 255, 0.12); stroke: rgba(76, 141, 255, 0.65); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+  .sc-glyph.selected .sc-hit { fill: rgba(76, 141, 255, 0.18); stroke: #2f6fff; stroke-width: 1.8; vector-effect: non-scaling-stroke; }
   #marquee {
     position: fixed;
     border: 1.5px dashed var(--accent);
@@ -94,7 +93,10 @@
   #overlay-layer {
     position: absolute;
     inset: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
+    z-index: 2;
   }
   aside {
     width: 280px;
@@ -105,7 +107,7 @@
     font-size: 12px;
     line-height: 1.55;
   }
-  aside h3 { margin: 8px 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; }
+  aside h3 { margin: 10px 0 6px; font-size: 12px; color: var(--muted); letter-spacing: 0.5px; }
   .kv { display: flex; justify-content: space-between; margin: 3px 0; }
   .anom-item {
     background: #1a1d24;
@@ -135,10 +137,17 @@
   <span id="page-label">第 1 / 1 页</span>
   <button id="btn-next" title="下一页">&gt;</button>
   <span class="sep"></span>
+  <button id="btn-zout" title="缩小画布">−</button>
+  <span id="zoom-label" style="min-width:44px;text-align:center">100%</span>
+  <button id="btn-zin" title="放大画布">+</button>
+  <button id="btn-zfit" title="适应窗口宽度">适应</button>
+  <span class="sep"></span>
   <button id="btn-reroll" title="切换到该字符的另一个手写变体 (R)">换写法 (R)</button>
-  <button id="btn-tighten" title="自动收拢过大字距">收拢空隙</button>
-  <button id="btn-drift" title="为过于整齐的左边缘增加自然起伏">自然右漂</button>
-  <button id="btn-hide" title="隐藏选中的字 (Delete)">隐藏 (Del)</button>
+  <button id="btn-scale-up" title="放大选中字 (+)">字放大</button>
+  <button id="btn-scale-dn" title="缩小选中字 (-)">字缩小</button>
+  <button id="btn-rot-l" title="逆时针微旋 ([)">左旋</button>
+  <button id="btn-rot-r" title="顺时针微旋 (])">右旋</button>
+  <button id="btn-hide" title="隐藏选中字 (Delete)">隐藏</button>
   <span class="sep"></span>
   <span>笔色:</span>
   <button class="swatch" data-color="black" style="background:#111318" title="黑笔"></button>
@@ -146,17 +155,20 @@
   <button class="swatch" data-color="darkblue" style="background:#13244b" title="深蓝"></button>
   <button class="swatch" data-color="red" style="background:#c6332f" title="红笔批注"></button>
   <span class="sep"></span>
-  <button id="btn-inspect">显示异常红框</button>
+  <button id="btn-tighten" title="自动收拢过大字距">收拢空隙</button>
+  <button id="btn-drift" title="为过于整齐的左边缘增加自然起伏">自然右漂</button>
+  <button id="btn-inspect">异常红框</button>
   <button id="btn-undo" title="Ctrl+Z">撤销</button>
   <button id="btn-reset">还原</button>
   <span class="sep"></span>
-  <button class="primary" id="btn-export-pdf">导出并下载 PDF</button>
+  <button class="primary" id="btn-export-pdf">导出 PDF</button>
   <button id="btn-export-png">导出透明 PNG</button>
 </header>
 
 <main>
   <div id="stage-wrap">
     <div id="paper-frame">
+      <img id="bg-img" alt="" />
       <div id="svg-host"></div>
       <svg id="overlay-layer"></svg>
     </div>
@@ -167,13 +179,15 @@
     <div class="kv"><span>底纸</span><strong id="st-paper">-</strong></div>
     <div class="kv"><span>已编辑步数</span><strong id="st-edits">0</strong></div>
     <div class="kv"><span>当前选中</span><strong id="st-sel">0</strong></div>
+    <div class="kv"><span>拖动偏移</span><strong id="st-drag">-</strong></div>
 
-    <h3>快捷键</h3>
+    <h3>操作说明</h3>
     <div style="color:var(--muted)">
+      <span class="kbd">Ctrl + 滚轮</span>：单独缩放纸面画布<br/>
       单击 / 框选：选中单字或多个字<br/>
+      按住拖动 / 方向键：实时微调位置<br/>
       双击或按 <span class="kbd">L</span>：选中整行<br/>
-      拖动或方向键：微调位置（按住 <span class="kbd">Shift</span> ×4）<br/>
-      <span class="kbd">R</span>：切换该字的另一手写变体<br/>
+      <span class="kbd">R</span>：切换该字另一手写变体<br/>
       <span class="kbd">+</span>/<span class="kbd">-</span>：缩放 · <span class="kbd">[</span>/<span class="kbd">]</span>：微旋<br/>
       <span class="kbd">Del</span>：隐藏选中字 · <span class="kbd">Ctrl+Z</span>：撤销
     </div>
@@ -187,15 +201,19 @@
 
 <script>
 (function () {
+  const BASE_PX = 794;
   let currentPage = 0;
   let totalPages = 1;
+  let zoom = 1.0;
   let selected = new Set();
   let inspectData = null;
   let showOverlay = true;
   let pageWidthMm = 210;
   let pageHeightMm = 297;
 
+  const stageWrap = document.getElementById('stage-wrap');
   const svgHost = document.getElementById('svg-host');
+  const bgImg = document.getElementById('bg-img');
   const overlayLayer = document.getElementById('overlay-layer');
   const paperFrame = document.getElementById('paper-frame');
   const marqueeEl = document.getElementById('marquee');
@@ -205,7 +223,7 @@
     el.textContent = msg;
     el.style.display = 'block';
     clearTimeout(el._t);
-    el._t = setTimeout(() => { el.style.display = 'none'; }, 2400);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 2600);
   }
 
   async function api(url, method = 'GET', body = null) {
@@ -216,6 +234,51 @@
     }
     const r = await fetch(url, opts);
     return await r.json();
+  }
+
+  function applyZoom(newZoom, anchorClientX = null, anchorClientY = null) {
+    const clamped = Math.max(0.45, Math.min(4.0, Math.round(newZoom * 100) / 100));
+    const oldRect = paperFrame.getBoundingClientRect();
+    let relX = 0.5, relY = 0.5;
+    if (anchorClientX !== null && oldRect.width > 0 && oldRect.height > 0) {
+      relX = (anchorClientX - oldRect.left) / oldRect.width;
+      relY = (anchorClientY - oldRect.top) / oldRect.height;
+    }
+    zoom = clamped;
+    const svg = svgHost.querySelector('svg');
+    const targetW = Math.round(BASE_PX * zoom);
+    if (svg) svg.style.width = targetW + 'px';
+    paperFrame.style.width = targetW + 'px';
+    document.getElementById('zoom-label').textContent = Math.round(zoom * 100) + '%';
+    if (anchorClientX !== null) {
+      const nr = paperFrame.getBoundingClientRect();
+      stageWrap.scrollLeft += (nr.left + relX * nr.width) - anchorClientX;
+      stageWrap.scrollTop += (nr.top + relY * nr.height) - anchorClientY;
+    }
+    renderAnomalies();
+  }
+
+  function injectHitboxes() {
+    const NS = 'http://www.w3.org/2000/svg';
+    document.querySelectorAll('.sc-glyph').forEach(g => {
+      if (g.querySelector('.sc-hit')) return;
+      try {
+        const bb = g.getBBox();
+        const padX = Math.max(8, bb.width * 0.18);
+        const padY = Math.max(8, bb.height * 0.14);
+        const rect = document.createElementNS(NS, 'rect');
+        rect.setAttribute('class', 'sc-hit');
+        rect.setAttribute('x', (bb.x - padX).toFixed(2));
+        rect.setAttribute('y', (bb.y - padY).toFixed(2));
+        rect.setAttribute('width', (Math.max(12, bb.width) + padX * 2).toFixed(2));
+        rect.setAttribute('height', (Math.max(12, bb.height) + padY * 2).toFixed(2));
+        rect.setAttribute('rx', '6');
+        rect.setAttribute('fill', 'transparent');
+        rect.setAttribute('stroke', 'none');
+        rect.setAttribute('pointer-events', 'all');
+        g.insertBefore(rect, g.firstChild);
+      } catch (_) {}
+    });
   }
 
   function updateSelectionUI() {
@@ -240,10 +303,10 @@
       const div = document.createElement('div');
       div.className = 'anom-item';
       div.innerHTML = `<span class="badge">${a.kind}</span> <b>${a.chars || ''}</b> <span style="color:#98a2b3">(${a.line || ''})</span>`;
-      div.onclick = () => {
+      div.onclick = async () => {
         if (typeof a.page === 'number' && a.page !== currentPage) {
           currentPage = a.page;
-          refreshPage();
+          await refreshPage();
         }
         selected = new Set(a.ids || []);
         updateSelectionUI();
@@ -254,16 +317,14 @@
         a.ids.forEach(gid => {
           const gel = document.getElementById(gid);
           if (!gel) return;
-          const bb = gel.getBBox();
-          const rc = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-          // Approximate highlight around transformed node using getBoundingClientRect mapped to paperFrame
           const gr = gel.getBoundingClientRect();
           const pr = paperFrame.getBoundingClientRect();
           const mmPerPx = pageWidthMm / Math.max(1, pr.width);
-          rc.setAttribute('x', ((gr.left - pr.left) * mmPerPx - 0.6).toFixed(2));
-          rc.setAttribute('y', ((gr.top - pr.top) * mmPerPx - 0.6).toFixed(2));
-          rc.setAttribute('width', (gr.width * mmPerPx + 1.2).toFixed(2));
-          rc.setAttribute('height', (gr.height * mmPerPx + 1.2).toFixed(2));
+          const rc = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rc.setAttribute('x', ((gr.left - pr.left) * mmPerPx - 0.5).toFixed(2));
+          rc.setAttribute('y', ((gr.top - pr.top) * mmPerPx - 0.5).toFixed(2));
+          rc.setAttribute('width', (gr.width * mmPerPx + 1.0).toFixed(2));
+          rc.setAttribute('height', (gr.height * mmPerPx + 1.0).toFixed(2));
           rc.setAttribute('fill', 'rgba(226, 76, 75, 0.14)');
           rc.setAttribute('stroke', '#e24c4b');
           rc.setAttribute('stroke-width', '0.35');
@@ -288,7 +349,18 @@
 
   async function refreshPage() {
     const data = await api(`/api/page_svg/${currentPage}`);
+    if (data.bg_url) {
+      bgImg.src = data.bg_url;
+      bgImg.style.display = 'block';
+    } else {
+      bgImg.style.display = 'none';
+    }
     svgHost.innerHTML = data.svg;
+    const svg = svgHost.querySelector('svg');
+    const targetW = Math.round(BASE_PX * zoom);
+    if (svg) svg.style.width = targetW + 'px';
+    paperFrame.style.width = targetW + 'px';
+    injectHitboxes();
     updateSelectionUI();
     await refreshState();
   }
@@ -296,17 +368,29 @@
   async function sendOp(payload) {
     const res = await api('/api/ops', 'POST', payload);
     if (!res.ok) {
-      toast(res.error || 'Op failed');
-      return;
+      toast(res.error || '操作失败');
+      return null;
     }
     await refreshPage();
+    return res;
   }
 
-  // Pointer selection & drag-to-move
+  // Intercept Ctrl+Wheel on the stage canvas ONLY (does not zoom browser UI)
+  stageWrap.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+      applyZoom(zoom * factor, e.clientX, e.clientY);
+    }
+  }, { passive: false });
+
+  // Pointer selection & live drag-to-move
   let dragMode = null;
   let startX = 0, startY = 0;
+  let origTransforms = new Map();
 
   paperFrame.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     const gEl = e.target.closest('.sc-glyph');
     startX = e.clientX;
     startY = e.clientY;
@@ -318,6 +402,11 @@
       }
       updateSelectionUI();
       dragMode = 'move';
+      origTransforms.clear();
+      selected.forEach(gid => {
+        const el = document.getElementById(gid);
+        if (el) origTransforms.set(gid, el.getAttribute('transform') || '');
+      });
     } else {
       if (!e.shiftKey) selected.clear();
       updateSelectionUI();
@@ -337,7 +426,7 @@
     if (!lid) return;
     document.querySelectorAll(`.sc-glyph[data-line="${lid}"]`).forEach(el => selected.add(el.id));
     updateSelectionUI();
-    toast(`Selected line ${lid} (${selected.size} glyphs)`);
+    toast(`已选中整行 ${lid}（共 ${selected.size} 个字）`);
   });
 
   window.addEventListener('mousemove', (e) => {
@@ -347,6 +436,16 @@
       const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
       marqueeEl.style.left = x + 'px'; marqueeEl.style.top = y + 'px';
       marqueeEl.style.width = w + 'px'; marqueeEl.style.height = h + 'px';
+    } else if (dragMode === 'move' && selected.size > 0) {
+      const pr = paperFrame.getBoundingClientRect();
+      const mmPerPx = pageWidthMm / Math.max(1, pr.width);
+      const dxMm = (e.clientX - startX) * mmPerPx;
+      const dyMm = (e.clientY - startY) * mmPerPx;
+      origTransforms.forEach((baseTf, gid) => {
+        const el = document.getElementById(gid);
+        if (el) el.setAttribute('transform', `translate(${dxMm.toFixed(3)},${dyMm.toFixed(3)}) ${baseTf}`);
+      });
+      document.getElementById('st-drag').textContent = `${dxMm >= 0 ? '+' : ''}${dxMm.toFixed(2)}, ${dyMm >= 0 ? '+' : ''}${dyMm.toFixed(2)} mm`;
     }
   });
 
@@ -354,6 +453,7 @@
     if (!dragMode) return;
     const mode = dragMode;
     dragMode = null;
+    document.getElementById('st-drag').textContent = '-';
     if (mode === 'marquee') {
       marqueeEl.style.display = 'none';
       const x0 = Math.min(startX, e.clientX), y0 = Math.min(startY, e.clientY);
@@ -372,18 +472,32 @@
       const mmPerPx = pageWidthMm / Math.max(1, pr.width);
       const dxMm = (e.clientX - startX) * mmPerPx;
       const dyMm = (e.clientY - startY) * mmPerPx;
-      if (Math.hypot(dxMm, dyMm) > 0.25) {
+      if (Math.hypot(dxMm, dyMm) > 0.15) {
         await sendOp({ op: 'move', ids: Array.from(selected), dx: dxMm, dy: dyMm });
+      } else {
+        origTransforms.forEach((baseTf, gid) => {
+          const el = document.getElementById(gid);
+          if (el) el.setAttribute('transform', baseTf);
+        });
       }
+      origTransforms.clear();
     }
   });
+
+  async function doReroll() {
+    if (!selected.size) { toast('请先点击或框选要换写法的字'); return; }
+    const res = await sendOp({ op: 'reroll', ids: Array.from(selected) });
+    if (!res) return;
+    if (res.rerolled === 0) toast('所选字符在当前字库里只有 1 个变体，无法切换');
+    else toast(`已切换 ${res.rerolled} 个字的手写变体`);
+  }
 
   window.addEventListener('keydown', async (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
       await api('/api/undo', 'POST', {});
       await refreshPage();
-      toast('Undid last batch');
+      toast('已撤销上一步');
       return;
     }
     if (!selected.size) return;
@@ -405,25 +519,39 @@
       updateSelectionUI();
       toast(`已选中整行（共 ${selected.size} 个字）`);
     }
-    else if (e.key.toLowerCase() === 'r') { await sendOp({ op: 'reroll', ids: Array.from(selected) }); toast('已切换手写变体'); }
+    else if (e.key.toLowerCase() === 'r') { await doReroll(); }
     else if (e.key === '+' || e.key === '=') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }); }
     else if (e.key === '-') { await sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }); }
     else if (e.key === ']') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }); }
     else if (e.key === '[') { await sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }); }
-    else if (e.key === 'Delete' || e.key === 'Backspace') { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); }
+    else if (e.key === 'Delete' || e.key === 'Backspace') { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); toast('已隐藏选中字'); }
   });
 
   document.getElementById('btn-prev').onclick = () => { if (currentPage > 0) { currentPage--; selected.clear(); refreshPage(); } };
   document.getElementById('btn-next').onclick = () => { if (currentPage < totalPages - 1) { currentPage++; selected.clear(); refreshPage(); } };
-  document.getElementById('btn-reroll').onclick = () => selected.size ? sendOp({ op: 'reroll', ids: Array.from(selected) }) : toast('请先点击或框选要修改的字');
-  document.getElementById('btn-hide').onclick = () => { if (selected.size) { sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); } else { toast('请先选中要隐藏的字'); } };
-  document.getElementById('btn-tighten').onclick = () => sendOp({ action: 'tighten' });
-  document.getElementById('btn-drift').onclick = () => sendOp({ action: 'drift', force: true });
+  document.getElementById('btn-zin').onclick = () => applyZoom(zoom * 1.2);
+  document.getElementById('btn-zout').onclick = () => applyZoom(zoom / 1.2);
+  document.getElementById('btn-zfit').onclick = () => {
+    const avail = Math.max(320, stageWrap.clientWidth - 60);
+    applyZoom(avail / BASE_PX);
+  };
+  document.getElementById('btn-reroll').onclick = doReroll;
+  document.getElementById('btn-scale-up').onclick = () => selected.size ? sendOp({ op: 'scale', ids: Array.from(selected), k: 1.08 }) : toast('请先选中字');
+  document.getElementById('btn-scale-dn').onclick = () => selected.size ? sendOp({ op: 'scale', ids: Array.from(selected), k: 0.92 }) : toast('请先选中字');
+  document.getElementById('btn-rot-l').onclick = () => selected.size ? sendOp({ op: 'rotate', ids: Array.from(selected), deg: -2.0 }) : toast('请先选中字');
+  document.getElementById('btn-rot-r').onclick = () => selected.size ? sendOp({ op: 'rotate', ids: Array.from(selected), deg: 2.0 }) : toast('请先选中字');
+  document.getElementById('btn-hide').onclick = async () => { if (selected.size) { await sendOp({ op: 'hide', ids: Array.from(selected) }); selected.clear(); toast('已隐藏选中字'); } else { toast('请先选中要隐藏的字'); } };
+  document.getElementById('btn-tighten').onclick = async () => { const r = await sendOp({ action: 'tighten' }); if (r) toast(r.added ? `已收拢 ${r.added} 处空隙` : '当前没有明显过宽的空隙'); };
+  document.getElementById('btn-drift').onclick = async () => { const r = await sendOp({ action: 'drift', force: true }); if (r) toast('已应用自然右漂'); };
   document.getElementById('btn-inspect').onclick = (e) => { showOverlay = !showOverlay; e.target.classList.toggle('active', showOverlay); renderAnomalies(); };
   document.getElementById('btn-undo').onclick = async () => { await api('/api/undo', 'POST', {}); await refreshPage(); toast('已撤销上一步'); };
   document.getElementById('btn-reset').onclick = async () => { await api('/api/reset', 'POST', {}); selected.clear(); await refreshPage(); toast('已还原全部修改'); };
   document.querySelectorAll('.swatch').forEach(btn => {
-    btn.onclick = () => selected.size ? sendOp({ op: 'pen', ids: Array.from(selected), color: btn.dataset.color }) : toast('请先选中单字或双击选中整行');
+    btn.onclick = async () => {
+      if (!selected.size) { toast('请先点击选中单字，或双击选中整行'); return; }
+      await sendOp({ op: 'pen', ids: Array.from(selected), color: btn.dataset.color });
+      toast('已切换笔色');
+    };
   });
   function triggerDownloads(urls) {
     (urls || []).forEach((u, idx) => {
@@ -447,4 +575,3 @@
 </script>
 </body>
 </html>
-

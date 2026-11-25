@@ -71,8 +71,41 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                         self._send_json({"ok": False, "error": "invalid page index"}, 400)
                         return
                     resolved = resolve_scene_state(scene, edits)
-                    svg_str = render_page_svg(pidx, resolved, transparent=False)
-                    self._send_json({"ok": True, "page": pidx, "svg": svg_str})
+                    bg_raw = scene.get("background_pdf")
+                    has_bg = bool(bg_raw and Path(bg_raw).is_file())
+                    svg_str = render_page_svg(pidx, resolved, transparent=has_bg)
+                    self._send_json(
+                        {
+                            "ok": True,
+                            "page": pidx,
+                            "svg": svg_str,
+                            "bg_url": (f"/api/bg_png/{pidx}" if has_bg else None),
+                        }
+                    )
+                    return
+
+                if clean.startswith("/api/bg_png/"):
+                    try:
+                        pidx = int(clean.split("/")[-1])
+                    except ValueError:
+                        self._send_json({"ok": False, "error": "invalid page index"}, 400)
+                        return
+                    bg_raw = scene.get("background_pdf")
+                    if not bg_raw or not Path(bg_raw).is_file():
+                        self._send_json({"ok": False, "error": "no background pdf"}, 404)
+                        return
+                    import fitz
+
+                    with fitz.open(str(bg_raw)) as doc:
+                        if pidx < 0 or pidx >= len(doc):
+                            self._send_json({"ok": False, "error": "page out of range"}, 404)
+                            return
+                        png_bytes = doc[pidx].get_pixmap(dpi=150).tobytes("png")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/png")
+                    self.send_header("Content-Length", str(len(png_bytes)))
+                    self.end_headers()
+                    self.wfile.write(png_bytes)
                     return
 
                 if clean == "/api/download":
@@ -140,8 +173,20 @@ def start_editor_server(scene_path: Path, port: int = 0) -> Tuple[ThreadingHTTPS
                                 batch=batch,
                             )
                             new_edits, added = edits + [op], [op]
+                        changed_reroll = None
+                        if payload.get("op") == "reroll" and payload.get("ids"):
+                            pool = scene.get("variants_pool") or {}
+                            id_set = set(payload.get("ids") or [])
+                            changed_reroll = sum(
+                                1
+                                for g in scene.get("glyphs", [])
+                                if g.get("id") in id_set and len(pool.get(g.get("ch", ""), [])) >= 2
+                            )
                         save_edits(sdir, new_edits)
-                        self._send_json({"ok": True, "added": len(added), "edits_count": len(new_edits)})
+                        resp_obj = {"ok": True, "added": len(added), "edits_count": len(new_edits)}
+                        if changed_reroll is not None:
+                            resp_obj["rerolled"] = changed_reroll
+                        self._send_json(resp_obj)
                         return
 
                     if clean == "/api/undo":
