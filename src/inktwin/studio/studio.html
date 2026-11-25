@@ -46,9 +46,13 @@
   .zoom-lbl:hover { background: var(--accent-soft); color: var(--accent); }
   .pages-vp { max-height: calc(100vh - 185px); overflow: auto; background: #e8ebf1; border: 1px solid var(--line); border-radius: 8px; padding: 16px; cursor: grab; user-select: none; }
   .pages-vp.panning { cursor: grabbing; }
-  .pages { display: flex; flex-direction: column; gap: 14px; align-items: center; }
-  .pages img { width: 760px; height: auto; max-width: none; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; pointer-events: none; -webkit-user-drag: none; user-select: none; }
+  .pages { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; width: max-content; min-width: 100%; }
+  .pages img { width: 760px; height: auto; max-width: none; margin: 0 auto; box-shadow: 0 2px 14px rgba(20,30,60,.14); border-radius: 4px; background: #fff; display: block; pointer-events: none; -webkit-user-drag: none; user-select: none; }
   .pages img.checker { background-color: #f8f9fb; }
+  .btn.suggest { border-color: var(--warn); color: var(--warn); background: #fffbf2; }
+  .sub-lbl { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  details.insp-detail { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  details.insp-detail summary { cursor: pointer; user-select: none; color: var(--accent); }
   .checker { background-image: linear-gradient(45deg, #e2e5ec 25%, transparent 25%), linear-gradient(-45deg, #e2e5ec 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e5ec 75%), linear-gradient(-45deg, transparent 75%, #e2e5ec 75%); background-size: 14px 14px; background-position: 0 0, 0 7px, 7px -7px, -7px 0; background-color: #f8f9fb; }
   .seg-group { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
   .seg { flex: 1; min-width: 72px; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 8px; padding: 7px 10px; cursor: pointer; font: inherit; font-size: 13px; text-align: center; transition: all .12s; }
@@ -71,12 +75,12 @@
   .modal-bar b { font-size: 14px; margin-right: auto; }
   .modal-bar .btn { background: #2d3447; color: #fff; border-color: #414b63; padding: 5px 11px; font-size: 12.5px; }
   .modal-bar .btn.primary { background: var(--accent); border-color: var(--accent); }
-  .modal-body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .modal-body { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
   .modal-body.pannable { cursor: grab; user-select: none; }
   .modal-body.panning { cursor: grabbing; }
-  .modal-body img { width: 780px; height: auto; max-width: none; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; pointer-events: none; -webkit-user-drag: none; user-select: none; }
+  .modal-body img { width: 780px; height: auto; max-width: none; margin: 0 auto; box-shadow: 0 8px 32px rgba(0,0,0,.45); border-radius: 4px; background: #fff; pointer-events: none; -webkit-user-drag: none; user-select: none; }
   .modal-body img.checker { background-color: #f8f9fb; }
-  .modal-body iframe { width: min(980px, 92vw); height: calc(100vh - 96px); border: 0; border-radius: 6px; background: #fff; }
+  .modal-body iframe { width: min(980px, 92vw); height: calc(100vh - 96px); margin: 0 auto; border: 0; border-radius: 6px; background: #fff; }
   .lay-pages { display: flex; gap: 14px; flex-wrap: wrap; }
   .lay-page { position: relative; width: 330px; border: 1px solid var(--line); border-radius: 4px; background: #fff; user-select: none; }
   .lay-page img { width: 100%; display: block; pointer-events: none; }
@@ -288,12 +292,15 @@
         <div class="card">
           <h2>版面体检与微调</h2>
           <div id="insp"><div class="out" style="margin-top:0">请先在「排版」页生成 PDF。</div></div>
-          <div class="actions">
-            <button class="btn need-render" data-op="tighten" disabled title="自动收拢异常偏大的字间距">收拢空隙</button>
-            <button class="btn need-render" data-op="drift" disabled title="为过齐的左边缘增加自然手写起伏">自然右漂</button>
-            <button class="btn need-render" id="btn-op-undo" data-op="undo" disabled>撤销</button>
-            <button class="btn need-render" id="btn-op-reset" data-op="reset" disabled>还原</button>
-            <button class="btn need-render" data-op="refresh" disabled title="如果你刚在逐字编辑器里修改过，点此同步刷新预览">刷新预览</button>
+          <div class="sub-lbl">快捷调整</div>
+          <div class="actions" style="margin-top:4px">
+            <button class="btn need-render" id="btn-op-tighten" data-op="tighten" disabled title="把行内过宽的空白拉紧，减少断层感">收拢过宽空隙</button>
+            <button class="btn need-render" id="btn-op-drift" data-op="drift" disabled title="给每行左起点加一点手掌自然右漂，不像机器对齐">增加左缘起伏</button>
+          </div>
+          <div class="sub-lbl">编辑历史</div>
+          <div class="actions" style="margin-top:4px">
+            <button class="btn need-render" id="btn-op-undo" data-op="undo" disabled>↶ 撤销</button>
+            <button class="btn need-render" id="btn-op-reset" data-op="reset" disabled>↺ 全部还原</button>
           </div>
           <label>切换笔触材质（点击即重绘当前预览）</label>
           <div class="seg-group" id="pv-pen-group">
@@ -338,7 +345,7 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
-const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0, lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0, exportCache: {} };
+const S = { packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null, viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0, lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0, exportCache: {}, editorOpened: false, syncing: false };
 
 const SAMPLE_MD = `---
 title: 微积分作业 W3
@@ -545,7 +552,7 @@ $('#btn-pv-zin').onclick = () => applyPreviewZoom(S.previewZoom * 1.2);
 $('#btn-pv-zout').onclick = () => applyPreviewZoom(S.previewZoom / 1.2);
 $('#pv-zoom-lbl').onclick = () => applyPreviewZoom(1.0);
 $('#btn-pv-zfit').onclick = () => {
-  const avail = Math.max(320, $('#pages-vp').clientWidth - 40);
+  const avail = Math.max(320, $('#pages-vp').clientWidth - 36);
   applyPreviewZoom(avail / 760);
 };
 $('#pages-vp').addEventListener('wheel', (e) => {
@@ -937,26 +944,60 @@ async function showSnapshot(j) {
   const pen = j.pen_type || 'gel';
   $$('#pv-pen-group button').forEach(b => b.classList.toggle('active', b.dataset.pen === pen));
 
-  const hasEdits = (j.edits_count || 0) > 0;
-  $('#btn-op-undo').disabled = !hasEdits;
-  $('#btn-op-reset').disabled = !hasEdits;
-
   const ins = j.inspect, ac = ins.anomaly_counts || {};
-  const row = (k, label, crit) => { const v = ac[k] || 0; const cls = v === 0 ? 'ok' : (crit ? 'bad' : 'warn'); return `<div class="stat"><span>${label}</span><b class="${cls}">${v}</b></div>`; };
+  const gapCnt = ac.gap || 0;
+  const alignedCnt = ac.left_edges_aligned || 0;
+  const editsCnt = j.edits_count || 0;
+
+  const tightenBtn = $('#btn-op-tighten');
+  tightenBtn.disabled = gapCnt === 0;
+  tightenBtn.classList.toggle('suggest', gapCnt > 0);
+  tightenBtn.textContent = gapCnt > 0 ? `收拢过宽空隙 (${gapCnt})` : '无过宽空隙';
+
+  const driftBtn = $('#btn-op-drift');
+  driftBtn.disabled = !!j.grid_lock;
+  driftBtn.classList.toggle('suggest', !j.grid_lock && alignedCnt > 0);
+  driftBtn.textContent = j.grid_lock ? '左缘起伏（作文纸禁用）' : (alignedCnt > 0 ? '增加左缘起伏（建议）' : '增加左缘起伏');
+
+  const undoBtn = $('#btn-op-undo');
+  const resetBtn = $('#btn-op-reset');
+  undoBtn.disabled = editsCnt === 0;
+  resetBtn.disabled = editsCnt === 0;
+  undoBtn.textContent = editsCnt > 0 ? `↶ 撤销 (${editsCnt})` : '↶ 撤销';
+
+  const items = [
+    ['prompt_collision', '压题干', true],
+    ['outside_margin', '越界', true],
+    ['overlap', '墨迹重叠', false],
+    ['gap', '过宽空隙', false],
+    ['left_edges_aligned', '左缘过齐', false],
+  ];
+  const row = (k, label, crit) => {
+    const v = ac[k] || 0;
+    const cls = v === 0 ? 'ok' : (crit ? 'bad' : 'warn');
+    return `<div class="stat"><span>${label}</span><b class="${cls}">${v}</b></div>`;
+  };
+  const nonZero = items.filter(([k]) => (ac[k] || 0) > 0);
+  const inspBody = nonZero.length
+    ? nonZero.map(([k, l, c]) => row(k, l, c)).join('')
+    : `<div class="stat"><span>版面体检</span><b class="ok">✓ 无异常</b></div>`;
+  const detailRows = `<details class="insp-detail"><summary>查看全部 5 项体检指标</summary>${items.map(([k, l, c]) => row(k, l, c)).join('')}</details>`;
+
   $('#insp').innerHTML =
     `<div class="stat"><span>页数 / 行数 / 手写图元</span><b>${ins.pages} / ${ins.line_count} / ${ins.glyph_count}</b></div>` +
-    row('prompt_collision', '压题干', true) + row('outside_margin', '越界', true) +
-    row('overlap', '墨迹重叠', false) + row('gap', '大空隙', false) + row('left_edges_aligned', '左边缘过齐', false) +
-    `<div class="stat"><span>已追加编辑</span><b>${j.edits_count}</b></div>` +
+    inspBody + detailRows +
     (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '');
 
   await switchPreviewFormat(S.activeFmt);
 }
 
 $$('[data-op]').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
-  const j = await api('/api/scene/ops', { action: b.dataset.op });
+  const act = b.dataset.op;
+  const j = await api('/api/scene/ops', { action: act });
   await showSnapshot(j);
-  toast('已完成：' + b.textContent.trim());
+  if (act === 'tighten') toast(j.added ? `已收拢 ${j.added} 处过宽空隙` : '当前没有需要收拢的空隙');
+  else if (act === 'drift') toast(j.added ? '已增加自然左缘起伏' : '左缘已足够自然');
+  else toast('已完成：' + b.textContent.trim());
 }));
 
 $$('#pv-pen-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
@@ -993,8 +1034,26 @@ $('#btn-pv-pdf-modal').onclick = () => {
 
 $('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/scene/editor', {});
+  S.editorOpened = true;
   window.open(j.url, '_blank');
 });
+
+async function syncFromEditor() {
+  if (!S.editorOpened || !S.lastPdfUrl || S.syncing) return;
+  S.syncing = true;
+  try {
+    const j = await fetch('/api/scene/sync').then(r => r.json());
+    if (j && j.ok && j.changed) {
+      await showSnapshot(j);
+      toast('已自动同步逐字编辑器的修改');
+    }
+  } catch (_) {
+  } finally {
+    S.syncing = false;
+  }
+}
+window.addEventListener('focus', syncFromEditor);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncFromEditor(); });
 
 $('#md').value = SAMPLE_MD;
 loadState().catch(e => toast(e.message, true));

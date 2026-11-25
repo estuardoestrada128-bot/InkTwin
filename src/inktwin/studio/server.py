@@ -154,18 +154,28 @@ def api_preflight(st: StudioState, p: dict) -> dict:
     return {"ok": True, "report": res}
 
 
+def _edits_sig(scene_dir: Path) -> str:
+    ef = Path(scene_dir) / "edits.json"
+    if not ef.is_file():
+        return ""
+    st_f = ef.stat()
+    return f"{st_f.st_mtime_ns}:{st_f.st_size}"
+
+
 def _snapshot(st: StudioState) -> dict:
     cur = st.current
     if not cur:
         raise RuntimeError("No active render. Render a document first.")
     scene, edits, _ = load_inkscene(cur["scene"])
     insp = inspect_scene(scene, edits)
+    cur["edits_sig"] = _edits_sig(cur["scene"])
     return {
         "ok": True,
         "run": cur["run"],
         "render": cur.get("render"),
         "pdf_url": st.url_for(cur["pdf"]),
         "pen_type": cur.get("pen", "gel"),
+        "grid_lock": bool((scene.get("paper") or {}).get("grid_lock", False)),
         "previews": _pdf_vector_previews(st, cur["pdf"], f"run{cur['run']}"),
         "edits_count": len(edits),
         "inspect": {
@@ -230,10 +240,13 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
         raise RuntimeError("No active render.")
     scene, edits, sdir = load_inkscene(cur["scene"])
     action = p.get("action")
+    added_count = 0
     if action == "tighten":
-        new_edits, _ = apply_tighten(scene, edits)
+        new_edits, added = apply_tighten(scene, edits)
+        added_count = len(added)
     elif action == "drift":
-        new_edits, _ = apply_drift(scene, edits, force=bool(p.get("force", True)))
+        new_edits, added = apply_drift(scene, edits, force=bool(p.get("force", True)))
+        added_count = len(added)
     elif action == "undo":
         new_edits, _ = undo_last_batch(edits)
     elif action == "reset":
@@ -256,13 +269,16 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
             batch=next_batch_id(edits),
         )
         new_edits = edits + [op]
+        added_count = 1
     else:
         raise ValueError(f"unknown scene action: {action}")
     save_edits(sdir, new_edits)
     if p.get("pen_type"):
         cur["pen"] = p["pen_type"]
     export_scene(sdir, out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"])
-    return _snapshot(st)
+    snap = _snapshot(st)
+    snap["added"] = added_count
+    return snap
 
 
 def api_scene_export(st: StudioState, p: dict) -> dict:
@@ -576,6 +592,24 @@ def start_studio_server(workdir: Optional[Path] = None, port: int = 0) -> Tuple[
                 with st.lock:
                     try:
                         self._json(api_state(st, {}))
+                    except Exception as exc:
+                        self._json({"ok": False, "error": str(exc)}, 500)
+                return
+            if clean == "/api/scene/sync":
+                with st.lock:
+                    try:
+                        cur = st.current
+                        if not cur:
+                            self._json({"ok": True, "changed": False})
+                            return
+                        sig = _edits_sig(cur["scene"])
+                        if sig == cur.get("edits_sig"):
+                            self._json({"ok": True, "changed": False})
+                            return
+                        export_scene(cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"])
+                        snap = _snapshot(st)
+                        snap["changed"] = True
+                        self._json(snap)
                     except Exception as exc:
                         self._json({"ok": False, "error": str(exc)}, 500)
                 return
