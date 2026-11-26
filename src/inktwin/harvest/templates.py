@@ -52,11 +52,11 @@ _CORE_RADICALS = [
 ]
 
 _STROKE_LABELS = {
-    "H": "横H",
-    "V": "竖V",
-    "P": "撇P",
-    "N": "捺N",
-    "D": "点D",
+    "H": "横",
+    "V": "竖",
+    "P": "撇",
+    "N": "捺",
+    "D": "点",
 }
 
 
@@ -296,18 +296,21 @@ def build_template_cells(
         p1_items.append(("glyph", ch, ch, "height100"))
     c1 = _pack_items_to_cells(1, p1_items, prefix="t1p1")
 
-    # Page 2: Stroke DNA (26), 24 Radicals, 80 Core STEM CJK (+ 16 high-freq extra variants) -> 146 cells
-    p2_items: List[Tuple[str, str, str, str]] = []
+    # Page 2: Separated clean sections -> Stroke DNA (26), 24 Radicals, Core STEM CJK + high-freq variants (96) -> 146 cells
+    p2_strokes: List[Tuple[str, str, str, str]] = []
     for st, cnt in (("H", 5), ("V", 5), ("P", 5), ("N", 5), ("D", 6)):
         for _ in range(cnt):
-            p2_items.append(("stroke", st, _STROKE_LABELS[st], "height100"))
-    for rad in _CORE_RADICALS:
-        p2_items.append(("radical", rad, f"部{rad}", "height100"))
-    for ch in _TIER1_STEM_CJK:
-        p2_items.append(("glyph", ch, ch, "height100"))
+            p2_strokes.append(("stroke", st, _STROKE_LABELS[st], "height100"))
+    p2_rads = [("radical", rad, rad, "height100") for rad in _CORE_RADICALS]
+    p2_hanzi = [("glyph", ch, ch, "height100") for ch in _TIER1_STEM_CJK]
     for ch in "的是在不了有和为中大对成分等数函":
-        p2_items.append(("glyph", ch, ch, "height100"))
-    c2 = _pack_items_to_cells(2, p2_items, prefix="t1p2")
+        p2_hanzi.append(("glyph", ch, ch, "height100"))
+
+    c2 = (
+        _pack_items_to_cells(2, p2_strokes, prefix="t1p2s", y_start=23.5, row_pitch=16.8, box_size=13.4, max_rows=3)
+        + _pack_items_to_cells(2, p2_rads, prefix="t1p2r", y_start=80.2, row_pitch=16.8, box_size=13.4, max_rows=2)
+        + _pack_items_to_cells(2, p2_hanzi, prefix="t1p2c", y_start=120.3, row_pitch=16.8, box_size=13.4, max_rows=9)
+    )
     return c0 + c1 + c2, {
         0: "InkTwin Tier-1 Sheet (1/3): Multi-Variant Digits, Lowercase & Uppercase Letters",
         1: "InkTwin Tier-1 Sheet (2/3): Multi-Variant Math Operators, Delimiters, Bars & Greek",
@@ -392,6 +395,35 @@ def _resolve_char_font(ch: str) -> Tuple[str, fitz.Font]:
     return alt, f_ascii
 
 
+def _draw_mixed_line(
+    page: fitz.Page,
+    x_pt: float,
+    y_pt: float,
+    text: str,
+    fontsize: float,
+    color: Tuple[float, float, float],
+    center: bool = False,
+) -> None:
+    """Render mixed ASCII/CJK/Unicode-Math text smoothly with per-char font fallback."""
+    runs: List[Tuple[str, fitz.Font, float]] = []
+    total_w = 0.0
+    for raw_ch in text:
+        disp, fnt = _resolve_char_font(raw_ch)
+        if not disp:
+            continue
+        cw = float(fnt.text_length(disp, fontsize=fontsize))
+        runs.append((disp, fnt, cw))
+        total_w += cw
+    if not runs:
+        return
+    cur_x = (x_pt - total_w * 0.5) if center else x_pt
+    tw = fitz.TextWriter(page.rect)
+    for disp, fnt, cw in runs:
+        tw.append(fitz.Point(cur_x, y_pt), disp, font=fnt, fontsize=fontsize)
+        cur_x += cw
+    tw.write_text(page, color=color)
+
+
 def _draw_prompt_label(page: fitz.Page, cell: CellSpec) -> None:
     x, y, w, h = cell.box_mm
     box_rect = fitz.Rect(x * MM_TO_PT, y * MM_TO_PT, (x + w) * MM_TO_PT, (y + h) * MM_TO_PT)
@@ -417,25 +449,8 @@ def _draw_prompt_label(page: fitz.Page, cell: CellSpec) -> None:
 
     # Centered prompt label directly above the cell top edge (with full Unicode Math/Symbol fallback)
     lbl = cell.prompt if len(cell.prompt) <= 4 else cell.prompt[:4]
-    fs = 7.4
-    runs: List[Tuple[str, fitz.Font, float]] = []
-    total_w = 0.0
-    for raw_ch in lbl:
-        disp, fnt = _resolve_char_font(raw_ch)
-        if not disp:
-            continue
-        cw = float(fnt.text_length(disp, fontsize=fs))
-        runs.append((disp, fnt, cw))
-        total_w += cw
-
-    if runs:
-        cur_x = (x + w * 0.5) * MM_TO_PT - total_w * 0.5
-        lbl_y = (y - 0.95) * MM_TO_PT
-        tw = fitz.TextWriter(page.rect)
-        for disp, fnt, cw in runs:
-            tw.append(fitz.Point(cur_x, lbl_y), disp, font=fnt, fontsize=fs)
-            cur_x += cw
-        tw.write_text(page, color=COLOR_LABEL)
+    if lbl:
+        _draw_mixed_line(page, (x + w * 0.5) * MM_TO_PT, (y - 0.95) * MM_TO_PT, lbl, 7.4, COLOR_LABEL, center=True)
 
 
 def generate_template_pdf(
@@ -469,9 +484,13 @@ def generate_template_pdf(
             color=COLOR_LABEL,
             align=fitz.TEXT_ALIGN_LEFT,
         )
-        for c in cells:
-            if c.page == pno:
-                _draw_prompt_label(page, c)
+        page_cells = [c for c in cells if c.page == pno]
+        if any(c.cell_id.startswith("p2_t1p2s_") for c in page_cells):
+            _draw_mixed_line(page, 12.0 * MM_TO_PT, 22.0 * MM_TO_PT, "一、基础笔画（每格只写一笔：横 / 竖 / 撇 / 捺 / 点）", 8.2, COLOR_HEADER)
+            _draw_mixed_line(page, 12.0 * MM_TO_PT, 78.5 * MM_TO_PT, "二、常用偏旁部首（每格只写对应偏旁）", 8.2, COLOR_HEADER)
+            _draw_mixed_line(page, 12.0 * MM_TO_PT, 118.6 * MM_TO_PT, "三、高频汉字（末尾含常用字复写变体）", 8.2, COLOR_HEADER)
+        for c in page_cells:
+            _draw_prompt_label(page, c)
 
     spec_obj = {
         "schema": "inktwin-template-v1",
