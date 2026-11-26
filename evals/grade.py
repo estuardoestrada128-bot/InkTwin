@@ -22,6 +22,7 @@ SRC_DIR = REPO_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from inktwin import PACKS_DIR
 from inktwin.cli import main as cli_main
 from inktwin.fontgen import build_opentype_font
 from inktwin.pack import load_pack
@@ -198,13 +199,16 @@ def audit_privacy() -> dict:
     extra_needles = [s.strip() for s in os.environ.get("INKTWIN_PRIVACY_NEEDLES", "").split(",") if s.strip()]
     scan_roots = [
         REPO_ROOT / "README.md",
+        REPO_ROOT / "AGENTS.md",
         REPO_ROOT / "install.py",
         REPO_ROOT / "pyproject.toml",
-        REPO_ROOT / "packs" / "demo_sample.hwpack",
+        PACKS_DIR / "demo_sample.hwpack",
         REPO_ROOT / "src",
         REPO_ROOT / "tests",
         REPO_ROOT / "evals",
         REPO_ROOT / "docs",
+        REPO_ROOT / ".agents",
+        REPO_ROOT / "plugin",
     ]
     self_path = Path(__file__).resolve()
     for root in scan_roots:
@@ -274,7 +278,13 @@ def run_eval(pack_name: str = "demo_sample", gallery_dir: Optional[Path] = None)
         st3 = _raster_ink_stats(pdf3)
         s3, e3, _ = load_inkscene(sc3)
         in3 = inspect_scene(s3, e3)["anomaly_counts"]
-        ok3 = rc3 == 0 and sp3 == 0 and 0.002 < st3["ink_ratio"] < 0.35 and in3.get("outside_margin", 0) == 0
+        ok3 = (
+            rc3 == 0
+            and sp3 == 0
+            and 0.002 < st3["ink_ratio"] < 0.35
+            and in3.get("outside_margin", 0) == 0
+            and in3.get("prompt_collision", 0) == 0
+        )
         cases.append({"name": "compo_grid_lock", "passed": ok3, "visible_font_spans": sp3, "anomalies": in3, **st3})
         if gallery_dir is not None:
             with fitz.open(str(pdf3)) as d:

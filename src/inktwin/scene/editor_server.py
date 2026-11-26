@@ -13,6 +13,7 @@ from .inspector import inspect_scene
 from .ops import apply_align, apply_drift, apply_spacing, apply_tighten, make_atomic_ops, next_batch_id, undo_last_batch
 from .renderer import export_scene, render_page_svg
 from .schema import load_inkscene, resolve_scene_state, save_edits
+from ..studio._http_sec import inject_token_meta, new_session_token, validate_http_request
 
 EDITOR_HTML_PATH = Path(__file__).resolve().parent / "scene_editor.html"
 
@@ -25,11 +26,14 @@ def start_editor_server(
     scene_path: Path,
     port: int = 0,
     pen_getter: Optional[Callable[[], str]] = None,
+    nib_getter: Optional[Callable[[], float]] = None,
+    ink_getter: Optional[Callable[[], str]] = None,
 ) -> Tuple[ThreadingHTTPServer, int, str]:
     """Start local 127.0.0.1 editor server and return (server, port, url)."""
     _scene0, _edits0, resolved_dir = load_inkscene(scene_path)
     lock = threading.Lock()
     redo_stack: list = []
+    session_token = new_session_token()
 
     class _EditorHandler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
@@ -46,14 +50,20 @@ def start_editor_server(
 
         def do_GET(self):
             clean = self.path.split("?", 1)[0]
+            srv_port = self.server.server_address[1]
             if clean in ("/", "/index.html"):
-                html_bytes = EDITOR_HTML_PATH.read_bytes()
+                if validate_http_request(self, session_token, srv_port, is_post=False) is not None:
+                    return
+                html_bytes = inject_token_meta(EDITOR_HTML_PATH.read_bytes(), session_token)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(html_bytes)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(html_bytes)
+                return
+
+            if validate_http_request(self, session_token, srv_port, is_post=False) is not None:
                 return
 
             with lock:
@@ -70,6 +80,8 @@ def start_editor_server(
                             "paper_height_mm": float(paper.get("height_mm") or 297.0),
                             "grid_lock": bool(paper.get("grid_lock", False)),
                             "pen_type": (pen_getter() if pen_getter else "gel"),
+                            "nib_mm": (float(nib_getter()) if nib_getter else 0.5),
+                            "ink": (ink_getter() if ink_getter else scene.get("ink", "black")),
                             "pages": insp["pages"],
                             "edits_count": len(edits),
                             "batches_count": _count_batches(edits),
@@ -88,7 +100,8 @@ def start_editor_server(
                     resolved = resolve_scene_state(scene, edits)
                     bg_raw = scene.get("background_pdf")
                     has_bg = bool(bg_raw and Path(bg_raw).is_file())
-                    svg_str = render_page_svg(pidx, resolved, transparent=has_bg)
+                    ink_ov = ink_getter() if ink_getter else None
+                    svg_str = render_page_svg(pidx, resolved, transparent=has_bg, ink_override=ink_ov)
                     self._send_json(
                         {
                             "ok": True,
@@ -155,6 +168,9 @@ def start_editor_server(
 
         def do_POST(self):
             clean = self.path.split("?", 1)[0]
+            srv_port = self.server.server_address[1]
+            if validate_http_request(self, session_token, srv_port, is_post=True) is not None:
+                return
             length = int(self.headers.get("Content-Length", "0") or "0")
             body = self.rfile.read(length) if length > 0 else b"{}"
             try:
@@ -278,7 +294,12 @@ def start_editor_server(
                         fmt = payload.get("format", "pdf")
                         transp = bool(payload.get("transparent", False))
                         pen = (pen_getter() if (pen_getter and fmt != "svg") else "gel") or "gel"
-                        res = export_scene(sdir, fmt=fmt, transparent=transp, pen_type=pen)
+                        nib = float(nib_getter()) if (nib_getter and fmt != "svg") else 0.5
+                        ink_ov = ink_getter() if ink_getter else None
+                        res = export_scene(
+                            sdir, fmt=fmt, transparent=transp, pen_type=pen,
+                            nib_mm=nib, ink_override=ink_ov,
+                        )
                         urls = []
                         for out_f in res.get("outputs", []):
                             try:

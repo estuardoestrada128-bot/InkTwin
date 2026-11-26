@@ -21,6 +21,10 @@ dependencies = [
 [project.scripts]
 inktwin = "inktwin.cli:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "ruff>=0.4", "mypy>=1.8"]
+mcp = ["mcp>=1.0"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 include-package-data = true
@@ -29,5 +33,30 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-inktwin = ["renderer/js/*.js", "renderer/css/*.css", "scene/*.html", "studio/*.html"]
+inktwin = [
+    "assets/data/*.gz",
+    "assets/fonts/*.ttf",
+    "assets/fonts/*.otf",
+    "assets/fonts/*.woff2",
+    "assets/katex/*",
+    "assets/katex/fonts/*",
+    "assets/templates/*.pdf",
+    "packs/*.hwpack",
+    "renderer/js/*.js",
+    "renderer/css/*.css",
+    "scene/*.html",
+    "studio/*.html",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 128
+target-version = "py310"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
 

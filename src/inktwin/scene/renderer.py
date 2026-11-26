@@ -140,7 +140,7 @@ def render_page_svg(
             )
             p_fill = p_col if is_fill else "none"
             parts.append(
-                f'<path d="{d}" fill="{p_fill}" stroke="{p_col}" stroke-width="{sw_vb:.3f}" stroke-linecap="round" stroke-linejoin="round"/>'
+                f'<path d="{html.escape(d, quote=True)}" fill="{p_fill}" stroke="{p_col}" stroke-width="{sw_vb:.3f}" stroke-linecap="round" stroke-linejoin="round"/>'
             )
         parts.append("</g>")
 

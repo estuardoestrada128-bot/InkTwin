@@ -323,6 +323,7 @@
           <span id="pv-mode-pill" class="pill">完整 PDF · 矢量高清</span>
           <span class="hint">按住左键拖动画布 · <b>Ctrl + 滚轮</b>缩放</span>
         </div>
+        <div id="pv-warn-banner" style="display:none;margin:6px 0 0;padding:7px 11px;border-radius:6px;background:rgba(255,193,7,.14);color:#8a5a00;font-size:12.5px;border:1px solid rgba(255,193,7,.35)"></div>
         <div id="pages-vp" class="pages-vp">
           <div id="pages" class="pages"><div class="empty">尚未生成。请在「排版」页点击「生成仿手写 PDF」。</div></div>
         </div>
@@ -436,7 +437,7 @@ const S = {
   viFilter: 'all', viLimit: 60, viRecentChars: [], cleanPlan: null,
   previewZoom: 1.0, modalZoom: 1.0,
   lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0,
-  exportCache: {}, editorOpened: false, syncing: false, userZoomed: false, autoFitted: false,
+  exportCache: {}, editorOpened: false, editorRun: null, currentRun: null, totalPages: 0, syncing: false, userZoomed: false, autoFitted: false,
   lastBatchesCount: 0,
 };
 
@@ -477,18 +478,28 @@ function toast(msg, err = false) {
   clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', err ? 6000 : 2600);
 }
 
+function _csrfToken() {
+  const m = document.querySelector('meta[name="inktwin-token"]');
+  return m ? (m.getAttribute('content') || '') : '';
+}
+
 async function api(path, body) {
   if (location.protocol === 'file:') {
     throw new Error('不能直接双击打开 studio.html，请双击项目根目录的 start_studio.bat（或在终端运行 inktwin studio）启动。');
   }
+  const headers = { 'Content-Type': 'application/json' };
+  const tok = _csrfToken();
+  if (body && tok) headers['X-InkTwin-Token'] = tok;
   let r;
   try {
-    r = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    r = await fetch(path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined });
   } catch (e) {
     throw new Error('无法连接本地后端（请确认 InkTwin Studio 启动窗口没有被关闭；若已关闭请重新双击 start_studio.bat）');
   }
-  const j = await r.json();
-  if (!j.ok) throw new Error(j.error || 'request failed');
+  const txt = await r.text();
+  let j;
+  try { j = JSON.parse(txt); } catch (_e) { throw new Error(`HTTP ${r.status}: ${txt.slice(0, 120)}`); }
+  if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
 }
 
@@ -510,7 +521,7 @@ async function busy(btn, fn, opts = {}) {
   } finally {
     btn.classList.remove('is-busy');
     if (!managed || !ok) {
-      btn.disabled = wasDisabled ? false : false;
+      btn.disabled = wasDisabled;
       btn.innerHTML = old;
     }
   }
@@ -596,11 +607,11 @@ async function loadState() {
   S.packs = st.packs.filter(p => !p.error);
   $$('.pack-select').forEach(sel => {
     const prev = sel.value;
-    sel.innerHTML = S.packs.map(p => `<option value="${p.id}">${p.id}（${p.scope} · ${p.total_chars} 字 / ${p.variants} 变体）</option>`).join('');
+    sel.innerHTML = S.packs.map(p => `<option value="${escHtml(p.id)}">${escHtml(p.id)}（${escHtml(p.scope)} · ${p.total_chars} 字 / ${p.variants} 变体）</option>`).join('');
     if (prev) sel.value = prev;
   });
   const prevMerge = $('#hv-merge').value;
-  $('#hv-merge').innerHTML = '<option value="">（新建字库）</option>' + S.packs.map(p => `<option value="${p.id}">${p.id}（${p.scope === 'local' ? '本地 · 直接增量更新' : '公开 · 将另存到 local'}）</option>`).join('');
+  $('#hv-merge').innerHTML = '<option value="">（新建字库）</option>' + S.packs.map(p => `<option value="${escHtml(p.id)}">${escHtml(p.id)}（${p.scope === 'local' ? '本地 · 直接增量更新' : '公开 · 将另存到 local'}）</option>`).join('');
   if (prevMerge) $('#hv-merge').value = prevMerge;
   return st;
 }
@@ -1156,7 +1167,7 @@ function renderOptions() {
 }
 
 const DRAFT_KEY = 'inktwin_studio_draft_v1';
-const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-nib', 'opt-mood', 'opt-fs', 'opt-tag', 'opt-elastic'];
+const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-nib', 'opt-mood', 'opt-fs', 'opt-seed', 'opt-tag', 'opt-elastic'];
 const PRESET_KEY = 'inktwin_custom_presets_v1';
 const PRESET_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-nib', 'opt-mood', 'opt-fs', 'opt-elastic'];
 let draftTimer = null;
@@ -1405,7 +1416,11 @@ $('#btn-render').onclick = (e) => busy(e.currentTarget, async () => {
     S.overlayB64 = await fileToB64($('#ov-file').files[0]);
   }
   const j = await api('/api/render', renderOptions());
+  if (S.editorOpened && S.editorRun && j.run !== S.editorRun) {
+    toast('已重新排版生成新场景；之前打开的逐字编辑器已失效，请重新点击「逐字微调编辑器」');
+  }
   S.editorOpened = false;
+  S.editorRun = null;
   await showSnapshot(j);
   switchTab('preview');
   toast('已生成：' + j.inspect.glyph_count + ' 个手写图元');
@@ -1531,10 +1546,24 @@ function updateFormatControls(files) {
     const cnt = (files || []).length;
     dlBtn.textContent = cnt > 1 ? `⬇ 下载全部透明 ${fmt.toUpperCase()}（${cnt} 页）` : `⬇ 下载透明 ${fmt.toUpperCase()}`;
     modalBtn.style.display = 'none';
-    chips.innerHTML = (files || []).map((f, idx) => {
+    const zipBtn = cnt > 1
+      ? `<button class="dl-chip" id="btn-dl-zip" type="button" style="cursor:pointer;font-weight:600">📦 打包下载 ZIP（${cnt} 页）</button>`
+      : '';
+    chips.innerHTML = zipBtn + (files || []).map((f, idx) => {
       const fn = f.split('/').pop();
       return `<a class="dl-chip" href="${f}" download="${escHtml(fn)}">⬇ 第 ${idx + 1} 页 (${fmt.toUpperCase()})</a>`;
     }).join('');
+    const zb = $('#btn-dl-zip');
+    if (zb) {
+      zb.onclick = () => busy(zb, async () => {
+        const res = await api('/api/scene/export-zip', { format: fmt, transparent: true });
+        const a = document.createElement('a');
+        a.href = res.zip_url;
+        a.download = docFileName('zip');
+        a.click();
+        toast(`已打包 ${res.count} 页 ${fmt.toUpperCase()} 为 ZIP`);
+      });
+    }
   }
 }
 
@@ -1559,8 +1588,23 @@ async function showSnapshot(j) {
   $$('.need-render').forEach(b => b.disabled = false);
   S.snapVer += 1;
   S.exportCache = {};
+  S.currentRun = j.run || S.currentRun;
   S.lastPdfUrl = j.pdf_url;
   S.lastPdfPreviews = j.previews || [];
+  S.totalPages = Number(j.total_pages || S.lastPdfPreviews.length || 0);
+
+  const warns = [];
+  if (S.totalPages > S.lastPdfPreviews.length) {
+    warns.push(`当前共 ${S.totalPages} 页，画布仅预览前 ${S.lastPdfPreviews.length} 页；完整全部页面请点击「下载 PDF」或「原生 PDF」查看。`);
+  }
+  if (S.editorOpened && S.editorRun && j.run && j.run !== S.editorRun) {
+    warns.push('提示：此前打开的「逐字编辑器」标签页绑定的是旧版渲染结果，请点击「逐字微调编辑器 ↗」打开新版。');
+  }
+  const wb = $('#pv-warn-banner');
+  if (wb) {
+    wb.style.display = warns.length ? 'block' : 'none';
+    wb.textContent = warns.join(' ');
+  }
 
   const pen = j.pen_type || 'gel';
   const nib = String(j.nib_mm ?? 0.5);
@@ -1621,7 +1665,7 @@ async function showSnapshot(j) {
   $('#insp').innerHTML =
     `<div class="stat"><span>页数 / 行数 / 手写图元</span><b>${ins.pages} / ${ins.line_count} / ${ins.glyph_count}</b></div>` +
     inspBody + detailRows +
-    (ins.hints && ins.hints.length ? `<div class="out">${ins.hints.join('\n')}</div>` : '');
+    (ins.hints && ins.hints.length ? `<div class="out">${escHtml(ins.hints.join('\n'))}</div>` : '');
 
   await switchPreviewFormat(S.activeFmt);
 }
@@ -1729,9 +1773,14 @@ $('#btn-pv-pdf-modal').onclick = () => {
 
 $('#btn-editor').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/scene/editor', {});
-  S.editorOpened = true;
   const sep = j.url.includes('?') ? '&' : '?';
-  window.open(j.url + sep + 'return=' + encodeURIComponent(location.origin + '/#preview'), '_blank');
+  const win = window.open(j.url + sep + 'return=' + encodeURIComponent(location.origin + '/#preview'), '_blank');
+  if (!win) {
+    toast('浏览器拦截了新标签页弹窗，请允许弹窗后重试', true);
+    return;
+  }
+  S.editorOpened = true;
+  S.editorRun = j.run || S.currentRun;
 });
 
 async function syncFromEditor() {
@@ -1780,7 +1829,6 @@ loadState().then(async (st) => {
     try {
       const j = await fetch('/api/scene/sync?force=1').then(r => r.json());
       if (j && j.ok && j.pdf_url) {
-        S.editorOpened = true;
         await showSnapshot(j);
       }
     } catch (_) {}

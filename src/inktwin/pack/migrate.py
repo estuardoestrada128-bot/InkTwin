@@ -5,12 +5,10 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Set, Tuple
 
 from .facets import compute_facets
 from .schema import save_pack_zip
-
-PERSONAL_NAME_CHARS = {"李", "天", "誉"}
 
 
 def _build_manifest(pack_id: str, name: str, glyphs: dict, facets: dict, privacy: str) -> dict:
@@ -36,6 +34,7 @@ def migrate_from_legacy_skill(
     skill_custom_dir: Path,
     private_out: Path,
     demo_out: Path,
+    exclude_chars: Optional[Set[str]] = None,
 ) -> Tuple[Path, Path]:
     """Migrate Demo v1.0 JSONs into private and anonymized .hwpack bundles."""
     glyphs = json.loads((skill_custom_dir / "personal_glyphs.json").read_text(encoding="utf-8"))
@@ -45,15 +44,16 @@ def migrate_from_legacy_skill(
 
     facets = compute_facets(glyphs, style_model)
     private_manifest = _build_manifest(
-        pack_id="andy",
-        name="Andy StarNote Personal Handwriting (Demo v1.0 / v15)",
+        pack_id="personal",
+        name="Personal Handwriting Pack",
         glyphs=glyphs,
         facets=facets,
         privacy="private-local",
     )
     save_pack_zip(private_out, private_manifest, glyphs, style_model, radicals, strokes)
 
-    demo_glyphs = {k: v for k, v in glyphs.items() if k not in PERSONAL_NAME_CHARS}
+    drop = exclude_chars or set()
+    demo_glyphs = {k: v for k, v in glyphs.items() if k not in drop}
     demo_facets = compute_facets(demo_glyphs, style_model)
     demo_manifest = _build_manifest(
         pack_id="demo_sample",

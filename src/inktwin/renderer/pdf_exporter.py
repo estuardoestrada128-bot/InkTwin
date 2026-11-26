@@ -18,6 +18,19 @@ from ..preflight import find_browser
 RENDERER_DIR = Path(__file__).resolve().parent
 
 
+MAX_SCENE_BYTES = 64 * 1024 * 1024
+
+
+def _safe_under(base_dir: Path, rel_path: str, fallback: Path) -> str:
+    base_res = base_dir.resolve()
+    cand = (base_res / rel_path).resolve()
+    try:
+        cand.relative_to(base_res)
+        return str(cand)
+    except ValueError:
+        return str(fallback)
+
+
 class _QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -63,12 +76,21 @@ def export_html_to_pdf(
             def do_POST(self):
                 clean = self.path.split("?", 1)[0].split("#", 1)[0]
                 if clean == "/__scene_upload__":
-                    length = int(self.headers.get("Content-Length", "0") or "0")
+                    try:
+                        length = int(self.headers.get("Content-Length", "0") or "0")
+                    except ValueError:
+                        self.send_error(400, "Invalid Content-Length")
+                        return
+                    if length < 0 or length > MAX_SCENE_BYTES:
+                        self.send_error(413, "Scene payload too large")
+                        return
                     body = self.rfile.read(length) if length > 0 else b"{}"
                     try:
                         captured_scene["data"] = json.loads(body.decode("utf-8"))
                     except Exception:
                         captured_scene["data"] = None
+                        self.send_error(400, "Invalid JSON")
+                        return
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Content-Length", "11")
@@ -80,17 +102,18 @@ def export_html_to_pdf(
 
             def translate_path(self, path: str) -> str:
                 clean = path.split("?", 1)[0].split("#", 1)[0]
+                denied = tmp_path / "__forbidden__"
                 if clean.startswith("/assets/"):
-                    rel = urllib.request.url2pathname(clean[len("/assets/"):])
-                    return str(ASSETS_DIR / rel)
+                    rel = urllib.request.url2pathname(clean[len("/assets/"):]).lstrip("/\\")
+                    return _safe_under(ASSETS_DIR, rel, denied)
                 if clean.startswith("/js/"):
-                    rel = urllib.request.url2pathname(clean[len("/js/"):])
-                    return str(RENDERER_DIR / "js" / rel)
+                    rel = urllib.request.url2pathname(clean[len("/js/"):]).lstrip("/\\")
+                    return _safe_under(RENDERER_DIR / "js", rel, denied)
                 if clean.startswith("/css/"):
-                    rel = urllib.request.url2pathname(clean[len("/css/"):])
-                    return str(RENDERER_DIR / "css" / rel)
-                rel = urllib.request.url2pathname(clean.lstrip("/")) or "index.html"
-                return str(tmp_path / rel)
+                    rel = urllib.request.url2pathname(clean[len("/css/"):]).lstrip("/\\")
+                    return _safe_under(RENDERER_DIR / "css", rel, denied)
+                rel = urllib.request.url2pathname(clean.lstrip("/\\")) or "index.html"
+                return _safe_under(tmp_path, rel, denied)
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), _InkTwinHandler)
         port = server.server_address[1]
@@ -99,6 +122,7 @@ def export_html_to_pdf(
 
         try:
             url = f"http://127.0.0.1:{port}/index.html"
+            budget_ms = min(30000, max(10000, 8000 + len(html_content) // 40))
             cmd = [
                 browser,
                 "--headless=new",
@@ -106,7 +130,7 @@ def export_html_to_pdf(
                 "--no-sandbox",
                 "--disable-extensions",
                 "--no-pdf-header-footer",
-                "--virtual-time-budget=10000",
+                f"--virtual-time-budget={budget_ms}",
                 f"--print-to-pdf={str(out_pdf)}",
                 url,
             ]

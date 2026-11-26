@@ -170,10 +170,14 @@ def run_phase2_tests() -> None:
             op_res = json.loads(urllib.request.urlopen(req, timeout=5).read().decode("utf-8"))
             assert op_res["ok"] and op_res["added"] == 1
             # Test undo -> redo cycle
-            u_req = urllib.request.Request(f"{base_url}api/undo", data=b"{}", method="POST")
+            u_req = urllib.request.Request(
+                f"{base_url}api/undo", data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+            )
             u_res = json.loads(urllib.request.urlopen(u_req, timeout=5).read().decode("utf-8"))
             assert u_res["ok"] and u_res["redo_count"] == 1
-            r_req = urllib.request.Request(f"{base_url}api/redo", data=b"{}", method="POST")
+            r_req = urllib.request.Request(
+                f"{base_url}api/redo", data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
+            )
             r_res = json.loads(urllib.request.urlopen(r_req, timeout=5).read().decode("utf-8"))
             assert r_res["ok"] and r_res["restored"] == 1 and r_res["redo_count"] == 0
         finally:

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "inktwin": {
+      "command": "inktwin",
+      "args": ["mcp"]
+    }
+  }
+}
+

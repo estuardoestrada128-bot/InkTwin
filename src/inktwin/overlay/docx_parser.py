@@ -12,9 +12,12 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
-DEFAULT_LECTURES_ROOT = Path(
-    os.environ.get("INKTWIN_LECTURES_ROOT") or (Path.home() / "Desktop" / "Learning files" / "Lectures")
-)
+def _get_lectures_root() -> Optional[Path]:
+    env_r = os.environ.get("INKTWIN_LECTURES_ROOT")
+    if env_r:
+        p = Path(env_r).expanduser()
+        return p if p.is_dir() else None
+    return None
 
 CN_NUM_MAP = {
     "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
@@ -133,7 +136,7 @@ def parse_markdown_answers(md_text: str) -> Dict:
 
 def auto_find_docx(md_path: Path, frontmatter: Dict, lectures_root: Optional[Path] = None) -> Optional[Path]:
     """Auto-locate matching blank worksheet DOCX from subject/week metadata or sibling directory."""
-    root = lectures_root or DEFAULT_LECTURES_ROOT
+    root = lectures_root or _get_lectures_root()
     subject = str(frontmatter.get("subject", "")).strip()
     if not subject:
         parts = md_path.parts
@@ -149,7 +152,7 @@ def auto_find_docx(md_path: Path, frontmatter: Dict, lectures_root: Optional[Pat
         week_num = extract_week_number(str(frontmatter.get("title", "")))
 
     search_dirs: List[Path] = []
-    if subject and (root / subject / "Homework").exists():
+    if root is not None and subject and (root / subject / "Homework").exists():
         search_dirs.append(root / subject / "Homework")
     search_dirs.append(md_path.parent)
 

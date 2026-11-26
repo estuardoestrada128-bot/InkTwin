@@ -9,6 +9,7 @@ import fitz
 import numpy as np
 from PIL import Image, ImageDraw
 
+from ..geom.ribbon import ribbon_polygon_pts
 from ..synth.cjk_synth import _classify_stroke
 
 
@@ -121,6 +122,31 @@ def _edt_1d_rows(f: np.ndarray) -> np.ndarray:
 
 
 def _exact_edt(mask: np.ndarray) -> np.ndarray:
+    """Fast exact Euclidean distance transform (SciPy when available, vectorized 2-pass NumPy otherwise)."""
+    try:
+        from scipy.ndimage import distance_transform_edt
+
+        return distance_transform_edt(mask)
+    except Exception:
+        pass
+    if not np.any(mask):
+        return np.zeros(mask.shape, dtype=np.float64)
+    h, w = mask.shape
+    dy = np.where(mask, 1e6, 0.0)
+    for y in range(1, h):
+        dy[y] = np.minimum(dy[y], dy[y - 1] + 1.0)
+    for y in range(h - 2, -1, -1):
+        dy[y] = np.minimum(dy[y], dy[y + 1] + 1.0)
+    max_dy = float(np.max(dy[mask]))
+    if max_dy <= 64.0:
+        r_lim = min(int(math.ceil(max_dy)), w - 1)
+        row_d2 = dy * dy
+        d2 = row_d2.copy()
+        for dx in range(1, r_lim + 1):
+            c = float(dx * dx)
+            d2[:, dx:] = np.minimum(d2[:, dx:], row_d2[:, :-dx] + c)
+            d2[:, :-dx] = np.minimum(d2[:, :-dx], row_d2[:, dx:] + c)
+        return np.sqrt(d2)
     f = np.where(mask, 1e9, 0.0)
     return np.sqrt(_edt_1d_rows(_edt_1d_rows(f.T).T))
 
@@ -278,26 +304,7 @@ def pressure_preserve_thin_variant(v: dict, target_t: float = 4.8) -> dict:
 
 def ribbonize_open_polyline(pts: List[Tuple[float, float]], half_w: float = 0.65) -> List[Tuple[float, float]]:
     """Convert an open center polyline into a subtly pressure-tapered closed contour polygon."""
-    if len(pts) < 2:
-        return list(pts)
-    n = len(pts)
-    left: List[Tuple[float, float]] = []
-    right: List[Tuple[float, float]] = []
-    for i, (px, py) in enumerate(pts):
-        if i == 0:
-            dx, dy = pts[1][0] - px, pts[1][1] - py
-        elif i == n - 1:
-            dx, dy = px - pts[n - 2][0], py - pts[n - 2][1]
-        else:
-            dx, dy = pts[i + 1][0] - pts[i - 1][0], pts[i + 1][1] - pts[i - 1][1]
-        ln = math.hypot(dx, dy) or 1.0
-        nx, ny = -dy / ln, dx / ln
-        u = i / max(1, n - 1)
-        taper = 0.70 + 0.38 * math.sin(u * math.pi)
-        r = max(0.2, half_w * taper)
-        left.append((px + nx * r, py + ny * r))
-        right.append((px - nx * r, py - ny * r))
-    return left + list(reversed(right))
+    return ribbon_polygon_pts(pts, half_w=half_w, taper_base=0.70, taper_amp=0.38, min_r=0.2)
 
 
 def calibrate_variant_polygon(

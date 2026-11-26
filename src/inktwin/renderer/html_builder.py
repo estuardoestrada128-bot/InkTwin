@@ -52,11 +52,13 @@ def render_markdown_with_math_placeholders(md_text: str, pack=None, seed: int = 
     def store(tex: str, display: bool) -> str:
         idx = len(tokens)
         key = f"@@MATHTOKEN{idx}END@@"
-        tokens.append((key, tex.strip(), display))
+        tokens.append((key, tex.replace("\x00BSLASH\x00", "\\\\").strip(), display))
         return key
 
-    protected = re.sub(r"\$\$(.*?)\$\$", lambda m: store(m.group(1), True), text_no_sketch, flags=re.S)
+    masked = text_no_sketch.replace("\\\\", "\x00BSLASH\x00")
+    protected = re.sub(r"\$\$(.*?)\$\$", lambda m: store(m.group(1), True), masked, flags=re.S)
     protected = re.sub(r"(?<!\\)\$([^\$\n]+?)(?<!\\)\$", lambda m: store(m.group(1), False), protected)
+    protected = protected.replace("\x00BSLASH\x00", "\\\\")
 
     md_engine = MarkdownIt("commonmark", {"html": True, "breaks": True})
     md_engine.enable("table")

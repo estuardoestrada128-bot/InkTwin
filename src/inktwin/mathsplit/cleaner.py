@@ -255,13 +255,14 @@ def preprocess_markdown_block(
             final_lines.append(ln)
             continue
 
-        # Case B: line ending with a balanced $...$ formula (find the LAST balanced inline formula safely)
+        # Case B: line ending with a balanced $...$ formula (handle escaped backslashes \\$ accurately)
         ln_r = ln.rstrip()
-        math_matches = list(re.finditer(r"(?<!\\)\$([^\$\n]+?)(?<!\\)\$", ln_r))
-        m_last = math_matches[-1] if (math_matches and math_matches[-1].end() == len(ln_r)) else None
-        if m_last and not ln_r[: m_last.start()].strip().endswith('<span class="hw-eq-gap"></span>'):
-            prefix = ln_r[: m_last.start()]
-            inner_tex = m_last.group(1)
+        ln_masked = ln_r.replace("\\\\", "\x00BSLASH\x00")
+        math_matches = list(re.finditer(r"(?<!\\)\$([^\$\n]+?)(?<!\\)\$", ln_masked))
+        m_last = math_matches[-1] if (math_matches and math_matches[-1].end() == len(ln_masked)) else None
+        if m_last and not ln_masked[: m_last.start()].strip().endswith('<span class="hw-eq-gap"></span>'):
+            prefix = ln_masked[: m_last.start()].replace("\x00BSLASH\x00", "\\\\")
+            inner_tex = m_last.group(1).replace("\x00BSLASH\x00", "\\\\")
             prefix_w = _estimate_prefix_mm(prefix, font_size_pt)
             total_w = prefix_w + estimate_latex_width_mm(inner_tex, font_size_pt)
             if total_w > safe_avail * 0.96:

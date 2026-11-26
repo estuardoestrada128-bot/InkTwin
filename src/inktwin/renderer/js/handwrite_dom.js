@@ -1742,6 +1742,34 @@
         el.dataset.hwGroup = `sk_${idx}`;
       });
 
+      // Model break-inside: avoid page pushes so scene.json pageIdx & yMm match Chrome print pagination
+      const avoidSelectors = 'main#page-root .hw-answer p, main#page-root .hw-answer li, main#page-root .hw-chain-cont, main#page-root .hw-math-display, main#page-root .hw-table-wrap, main#page-root .hw-sketch-wrap';
+      const breakShifts = [];
+      let cumShiftMm = 0;
+      document.querySelectorAll(avoidSelectors).forEach(blk => {
+        if (blk.closest('.ov-page')) return;
+        const brc = blk.getBoundingClientRect();
+        if (brc.height < 1) return;
+        const bTop = (brc.top - rootRect.top) / pxPerMm + cumShiftMm;
+        const bH = brc.height / pxPerMm;
+        if (bH >= usableH * 0.96) return;
+        const pStart = Math.max(0, Math.floor(bTop / usableH));
+        const pEnd = Math.max(0, Math.floor((bTop + bH - 0.2) / usableH));
+        if (pEnd > pStart) {
+          const pushMm = (pStart + 1) * usableH - bTop;
+          cumShiftMm += pushMm;
+          breakShifts.push({ rawTopMm: (brc.top - rootRect.top) / pxPerMm, shiftMm: cumShiftMm });
+        }
+      });
+      function effectiveYRelMm(rawYRelMm) {
+        let add = 0;
+        for (let i = 0; i < breakShifts.length; i++) {
+          if (rawYRelMm + 0.05 >= breakShifts[i].rawTopMm) add = breakShifts[i].shiftMm;
+          else break;
+        }
+        return rawYRelMm + add;
+      }
+
       const rawGlyphs = [];
       let maxPage = Math.max(0, document.querySelectorAll('.ov-page').length - 1);
       document.querySelectorAll('main#page-root svg.pg-svg, main#page-root svg.hw-hand-svg').forEach(sv => {
@@ -1775,7 +1803,7 @@
           yMm = (rc.top - ovRect.top) / pxPerMm;
         } else {
           const xRelMm = (rc.left - rootRect.left) / pxPerMm;
-          const yRelMm = (rc.top - rootRect.top) / pxPerMm;
+          const yRelMm = effectiveYRelMm((rc.top - rootRect.top) / pxPerMm);
           pageIdx = Math.max(0, Math.floor(yRelMm / usableH));
           xMm = mLeft + xRelMm;
           yMm = mTop + (yRelMm - pageIdx * usableH);
@@ -1806,10 +1834,12 @@
 
       const obstacles = Array.isArray(CFG.presetObstacles) ? CFG.presetObstacles.slice() : [];
       document.querySelectorAll('main#page-root .ws-prompt, main#page-root .ws-header, main#page-root .st-header').forEach(el => {
+        // Standalone .st-header contains handwritten glyphs themselves — do not treat them as external prompt obstacles
+        if (el.classList.contains('st-header') && el.querySelector('svg.pg-svg')) return;
         const rc = el.getBoundingClientRect();
         if (rc.width < 1 || rc.height < 1) return;
         const xRel = (rc.left - rootRect.left) / pxPerMm;
-        const yRel = (rc.top - rootRect.top) / pxPerMm;
+        const yRel = effectiveYRelMm((rc.top - rootRect.top) / pxPerMm);
         const pageIdx = Math.max(0, Math.floor(yRel / usableH));
         obstacles.push({
           page: pageIdx,
@@ -1874,7 +1904,7 @@
         });
       }
 
-      await fetch('/__scene_upload__', {
+      const resp = await fetch('/__scene_upload__', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1884,8 +1914,13 @@
           obstacles,
         }),
       });
+      if (!resp.ok) {
+        window.__INKTWIN_SCENE_ERROR__ = `HTTP ${resp.status}`;
+        console.error('[InkTwin scene upload failed]', resp.status);
+      }
     } catch (e) {
-      // Scene capture is best-effort
+      window.__INKTWIN_SCENE_ERROR__ = String((e && e.message) || e);
+      console.error('[InkTwin scene capture error]', e);
     }
   }
 

@@ -80,17 +80,6 @@ def _sample_bezier_c(p0, p1, p2, p3, steps: int = 8) -> List[Tuple[float, float]
     return pts
 
 
-def _sample_quad_q(p0, p1, p2, steps: int = 6) -> List[Tuple[float, float]]:
-    pts = []
-    for k in range(1, steps + 1):
-        t = k / steps
-        mt = 1.0 - t
-        x = mt**2 * p0[0] + 2 * mt * t * p1[0] + t**2 * p2[0]
-        y = mt**2 * p0[1] + 2 * mt * t * p1[1] + t**2 * p2[1]
-        pts.append((x, y))
-    return pts
-
-
 def _extract_subpaths_from_drawing(dr: dict) -> List[List[Tuple[float, float]]]:
     """Split concatenated PDF drawing items into independent subpaths when jump > 0.12*pt (~0.35pt)."""
     items = dr.get("items") or []
@@ -385,7 +374,10 @@ def harvest_template_pdf(
         },
         "source": f"template:{filled_pdf.name}",
     }
-    save_pack_zip(Path(out_pack), manifest, glyphs, style_model, radicals, strokes)
+    out_p = Path(out_pack)
+    tmp_p = out_p.with_suffix(".hwpack.tmp")
+    save_pack_zip(tmp_p, manifest, glyphs, style_model, radicals, strokes)
+    tmp_p.replace(out_p)
 
     return {
         "pack": str(Path(out_pack).resolve()),

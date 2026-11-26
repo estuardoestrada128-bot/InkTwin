@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from dataclasses import replace
+from inktwin import PACKS_DIR
 from inktwin.cli import main as cli_main
 from inktwin.fontgen import build_opentype_font
 from inktwin.harvest import generate_template_pdf, harvest_template_pdf, read_template_spec_from_pdf
@@ -106,7 +107,7 @@ def run_phase3_tests() -> None:
 
         # Test --merge-into demo_sample
         merged_pack = tmp / "merged.hwpack"
-        demo_pack_path = REPO_ROOT / "packs" / "demo_sample.hwpack"
+        demo_pack_path = PACKS_DIR / "demo_sample.hwpack"
         m_res = harvest_template_pdf(tgt_pdf, merged_pack, merge_into=demo_pack_path, pack_id="merged")
         assert m_res["total_chars"] >= load_pack(str(demo_pack_path)).glyphs.__len__()
 

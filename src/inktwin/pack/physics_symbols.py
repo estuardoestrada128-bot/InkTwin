@@ -6,6 +6,8 @@ import math
 import random
 from typing import Dict, List, Tuple
 
+from ..geom.ribbon import pts_to_ribbon_d
+
 Point = Tuple[float, float]
 
 
@@ -25,30 +27,12 @@ def _quad_pts(p0: Point, p1: Point, p2: Point, steps: int = 10) -> List[Point]:
 
 def _strokes_to_ribbon_d(strokes: List[List[Point]], base_half_w: float = 2.35) -> str:
     """Convert centerlines in 0..100 coords into closed pressure-tapered SVG polygon paths."""
-    parts: List[str] = []
-    for pts in strokes:
-        if len(pts) < 2:
-            continue
-        n = len(pts)
-        left: List[Point] = []
-        right: List[Point] = []
-        for i, (px, py) in enumerate(pts):
-            if i == 0:
-                dx, dy = pts[1][0] - px, pts[1][1] - py
-            elif i == n - 1:
-                dx, dy = px - pts[n - 2][0], py - pts[n - 2][1]
-            else:
-                dx, dy = pts[i + 1][0] - pts[i - 1][0], pts[i + 1][1] - pts[i - 1][1]
-            ln = math.hypot(dx, dy) or 1.0
-            nx, ny = -dy / ln, dx / ln
-            u = i / max(1, n - 1)
-            r = max(0.75, base_half_w * (0.68 + 0.42 * math.sin(u * math.pi)))
-            left.append((px + nx * r, py + ny * r))
-            right.append((px - nx * r, py - ny * r))
-        poly = left + list(reversed(right))
-        cmds = [f"M{poly[0][0]:.1f} {poly[0][1]:.1f}"] + [f"L{x:.1f} {y:.1f}" for x, y in poly[1:]] + ["Z"]
-        parts.append("".join(cmds))
-    return " ".join(parts)
+    parts = [
+        pts_to_ribbon_d(pts, base_half_w, taper_base=0.68, taper_amp=0.42, min_r=0.75, decimals=1)
+        for pts in strokes
+        if len(pts) >= 2
+    ]
+    return " ".join(p for p in parts if p)
 
 
 def _dot_poly(cx: float, cy: float, r: float = 3.2) -> List[Point]:

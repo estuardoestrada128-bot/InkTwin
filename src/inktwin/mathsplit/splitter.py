@@ -58,12 +58,14 @@ def _consume_braced(s: str, idx: int) -> Tuple[str, int]:
 
 def estimate_latex_width_mm(tex: str, font_size_pt: float = 12.0) -> float:
     """Estimate rendered horizontal width of a LaTeX expression in physical mm."""
+    pt_scale = max(0.5, float(font_size_pt) / 12.0)
     em_mm = font_size_pt * 0.352778 * 1.06
     # Strip display directives for measurement
     s = tex.replace("\\displaystyle", " ").strip()
 
     def _est(expr: str, scale: float = 1.0) -> float:
         total = 0.0
+        ms = scale * pt_scale
         i = 0
         n = len(expr)
         while i < n:
@@ -79,42 +81,42 @@ def estimate_latex_width_mm(tex: str, font_size_pt: float = 12.0) -> float:
                 if cmd in ("frac", "dfrac", "tfrac"):
                     num, i = _consume_braced(expr, i)
                     den, i = _consume_braced(expr, i)
-                    total += max(_est(num, scale), _est(den, scale)) + 1.8 * scale
+                    total += max(_est(num, scale), _est(den, scale)) + 1.8 * ms
                 elif cmd == "sqrt":
                     if i < n and expr[i] == "[":
                         end_b = expr.find("]", i)
                         if end_b != -1:
                             i = end_b + 1
                     body, i = _consume_braced(expr, i)
-                    total += _est(body, scale) + 3.8 * scale
+                    total += _est(body, scale) + 3.8 * ms
                 elif cmd in ("text", "mathrm", "mathbf", "mathit"):
                     body, i = _consume_braced(expr, i)
                     for c in body:
                         total += (1.32 if "\u4e00" <= c <= "\u9fff" else 0.56) * em_mm * scale
                 elif cmd in ("int", "iint", "iiint", "oint", "sum", "prod", "lim"):
-                    total += 5.4 * scale
+                    total += 5.4 * ms
                 elif cmd in ("Rightarrow", "Longrightarrow", "implies", "Leftrightarrow", "Longleftrightarrow", "iff"):
-                    total += 5.2 * scale
+                    total += 5.2 * ms
                 elif cmd in ("xrightarrow", "longrightarrow"):
                     if i < n and expr[i] == "[":
                         end_b = expr.find("]", i)
                         if end_b != -1:
                             i = end_b + 1
                     lbl, i = _consume_braced(expr, i)
-                    total += max(6.5, _est(lbl, scale * 0.72) + 2.0) * scale
+                    total += max(6.5 * ms, _est(lbl, scale * 0.72) + 2.0 * ms)
                 elif cmd in ("left", "right"):
                     if i < n:
                         i += 1
-                    total += 1.9 * scale
+                    total += 1.9 * ms
                 elif cmd in ("overline", "bar", "hat", "tilde", "vec", "dot", "ddot"):
                     body, i = _consume_braced(expr, i)
-                    total += max(2.4 * scale, _est(body, scale))
+                    total += max(2.4 * ms, _est(body, scale))
                 elif cmd in ("quad", "qquad"):
-                    total += (4.5 if cmd == "quad" else 9.0) * scale
+                    total += (4.5 if cmd == "quad" else 9.0) * ms
                 elif cmd in (",", ";", ":"):
-                    total += 0.9 * scale
+                    total += 0.9 * ms
                 elif cmd in ("cdot", "times", "div", "le", "leq", "ge", "geq", "approx", "equiv", "sim", "neq", "to", "rightarrow", "leftarrow"):
-                    total += 4.2 * scale
+                    total += 4.2 * ms
                 elif cmd in ("begin", "end"):
                     _, i = _consume_braced(expr, i)
                 else:
@@ -122,14 +124,14 @@ def estimate_latex_width_mm(tex: str, font_size_pt: float = 12.0) -> float:
                     w_est = 2.7 if len(cmd) > 2 and cmd[0].islower() else 2.5
                     if cmd in ("sin", "cos", "tan", "log", "exp", "lim", "sup", "inf"):
                         w_est = len(cmd) * 2.1
-                    total += w_est * scale
+                    total += w_est * ms
             elif ch in ("^", "_"):
                 i += 1
                 if i < n and expr[i] == "{":
                     sub, i = _consume_braced(expr, i)
                     sub_w = _est(sub, scale * 0.65)
                 elif i < n:
-                    sub_w = 1.9 * scale
+                    sub_w = 1.9 * ms
                     i += 1
                 else:
                     sub_w = 0.0
@@ -140,20 +142,20 @@ def estimate_latex_width_mm(tex: str, font_size_pt: float = 12.0) -> float:
                         sub2, i = _consume_braced(expr, i)
                         sub_w = max(sub_w, _est(sub2, scale * 0.65))
                     elif i < n:
-                        sub_w = max(sub_w, 1.9 * scale)
+                        sub_w = max(sub_w, 1.9 * ms)
                         i += 1
                 total += sub_w
             elif ch in ("=", "+", "-", "<", ">"):
-                total += 4.0 * scale
+                total += 4.0 * ms
                 i += 1
             elif ch in ("(", ")", "[", "]", ",", ".", ":", ";", "|", "/"):
-                total += 1.7 * scale
+                total += 1.7 * ms
                 i += 1
             elif "\u4e00" <= ch <= "\u9fff":
                 total += 1.32 * em_mm * scale
                 i += 1
             else:
-                total += 2.6 * scale
+                total += 2.6 * ms
                 i += 1
         return total
 

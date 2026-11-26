@@ -1,0 +1,10 @@
+{
+  "name": "inktwin",
+  "version": "2.0.0",
+  "description": "Offline personal-handwriting vector PDF engine, .hwpack builder, OpenType compiler, and Studio workbench.",
+  "skills": [
+    "../.agents/skills/inktwin"
+  ],
+  "mcpServers": "./mcp_config.json"
+}
+

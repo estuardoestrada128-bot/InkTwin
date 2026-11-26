@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .. import LOCAL_PACKS_DIR, PACKS_DIR
+from .. import LOCAL_PACKS_DIR, PACKS_DIR, USER_DATA_DIR
 from .physics_symbols import ensure_physics_symbols
 
 
@@ -37,14 +37,26 @@ class HwPack:
         return bool(self.style_model and (self.radicals or self.strokes))
 
 
+def _local_pack_dirs() -> List[Path]:
+    dirs: List[Path] = []
+    seen = set()
+    for d in (LOCAL_PACKS_DIR, USER_DATA_DIR / "packs"):
+        rd = d.resolve()
+        if rd not in seen:
+            seen.add(rd)
+            dirs.append(d)
+    return dirs
+
+
 def resolve_pack_path(name_or_path: Optional[str]) -> Path:
     """Resolve a pack alias or path; local packs take priority over public packs."""
+    local_dirs = _local_pack_dirs()
     if name_or_path:
         cand = Path(name_or_path)
         if cand.exists():
             return cand.resolve()
         stem = name_or_path[:-7] if name_or_path.endswith(".hwpack") else name_or_path
-        for base in (LOCAL_PACKS_DIR, PACKS_DIR):
+        for base in [*local_dirs, PACKS_DIR]:
             z = base / f"{stem}.hwpack"
             if z.exists():
                 return z.resolve()
@@ -53,16 +65,18 @@ def resolve_pack_path(name_or_path: Optional[str]) -> Path:
                 return d.resolve()
         raise FileNotFoundError(f"Handwriting pack not found: {name_or_path}")
 
-    for candidate in (LOCAL_PACKS_DIR / "andy.hwpack", PACKS_DIR / "demo_sample.hwpack"):
-        if candidate.exists():
-            return candidate.resolve()
-    any_local = sorted(LOCAL_PACKS_DIR.glob("*.hwpack"))
-    if any_local:
-        return any_local[0].resolve()
+    for ldir in local_dirs:
+        if ldir.is_dir():
+            any_local = sorted(ldir.glob("*.hwpack"))
+            if any_local:
+                return any_local[0].resolve()
+    demo_pub = PACKS_DIR / "demo_sample.hwpack"
+    if demo_pub.exists():
+        return demo_pub.resolve()
     any_pub = sorted(PACKS_DIR.glob("*.hwpack"))
     if any_pub:
         return any_pub[0].resolve()
-    raise FileNotFoundError("No .hwpack files found in packs/local/ or packs/.")
+    raise FileNotFoundError("No .hwpack files found in local or bundled packs.")
 
 
 def load_pack(name_or_path: Optional[str] = None) -> HwPack:
@@ -130,10 +144,13 @@ def save_pack_zip(
 
 
 def list_packs() -> List[dict]:
-    """List all discovered public and local handwriting packs with summary metadata."""
+    """List all discovered public and local handwriting packs using fast manifest-only ZIP reads."""
+    import zipfile
+
     results: List[dict] = []
     seen_paths = set()
-    for scope, folder in (("local", LOCAL_PACKS_DIR), ("public", PACKS_DIR)):
+    scopes: List[Tuple[str, Path]] = [("local", d) for d in _local_pack_dirs()] + [("public", PACKS_DIR)]
+    for scope, folder in scopes:
         if not folder.exists():
             continue
         for zp in sorted(folder.glob("*.hwpack")):
@@ -142,22 +159,43 @@ def list_packs() -> List[dict]:
                 continue
             seen_paths.add(rp)
             try:
-                pk = load_pack(str(rp))
-                results.append(
-                    {
-                        "id": pk.id,
-                        "scope": scope,
-                        "path": str(rp),
-                        "size_kb": round(rp.stat().st_size / 1024.0, 1),
-                        "total_chars": len(pk.glyphs),
-                        "real_cjk_chars": pk.real_cjk_count,
-                        "variants": pk.variant_count,
-                        "radicals": len(pk.radicals),
-                        "strokes": sum(len(v) for v in pk.strokes.values()),
-                        "facets": pk.manifest.get("facets", {}),
-                        "privacy": pk.manifest.get("privacy", scope),
-                    }
-                )
+                size_kb = round(rp.stat().st_size / 1024.0, 1)
+                with zipfile.ZipFile(rp, "r") as zf:
+                    manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+                stats = manifest.get("stats") or {}
+                if "total_chars" in manifest or "variants" in stats:
+                    results.append(
+                        {
+                            "id": str(manifest.get("id") or zp.stem),
+                            "scope": scope,
+                            "path": str(rp),
+                            "size_kb": size_kb,
+                            "total_chars": int(manifest.get("total_chars", stats.get("total_chars", 0))),
+                            "real_cjk_chars": int(stats.get("real_cjk_chars", 0)),
+                            "variants": int(manifest.get("total_variants", stats.get("variants", 0))),
+                            "radicals": int(stats.get("radicals", 0)),
+                            "strokes": int(stats.get("strokes", 0)),
+                            "facets": manifest.get("facets", {}),
+                            "privacy": manifest.get("privacy", scope),
+                        }
+                    )
+                else:
+                    pk = load_pack(str(rp))
+                    results.append(
+                        {
+                            "id": pk.id,
+                            "scope": scope,
+                            "path": str(rp),
+                            "size_kb": size_kb,
+                            "total_chars": len(pk.glyphs),
+                            "real_cjk_chars": pk.real_cjk_count,
+                            "variants": pk.variant_count,
+                            "radicals": len(pk.radicals),
+                            "strokes": sum(len(v) for v in pk.strokes.values()),
+                            "facets": pk.manifest.get("facets", {}),
+                            "privacy": pk.manifest.get("privacy", scope),
+                        }
+                    )
             except Exception as exc:
                 results.append({"id": zp.stem, "scope": scope, "path": str(rp), "error": str(exc)})
     return results

@@ -22,6 +22,12 @@ CHROME_CANDIDATES = [
     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
     r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
 ]
 
 
@@ -32,14 +38,14 @@ def find_browser() -> Optional[str]:
     for p in CHROME_CANDIDATES:
         if os.path.exists(p):
             return p
-    for cmd in ("chrome", "msedge", "google-chrome", "chromium"):
+    for cmd in ("chrome", "msedge", "google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
         found = shutil.which(cmd)
         if found:
             return found
     return None
 
 
-def run_doctor() -> dict:
+def run_doctor(packs: Optional[List[dict]] = None) -> dict:
     """Inspect dependencies, headless browser, offline KaTeX, medians DB, and installed packs."""
     deps = {}
     for mod in ("fitz", "PIL", "numpy", "yaml", "markdown_it", "fontTools"):
@@ -52,9 +58,9 @@ def run_doctor() -> dict:
     browser = find_browser()
     katex_ok = (KATEX_DIR / "katex.min.css").exists() and (KATEX_DIR / "katex.min.js").exists()
     medians_ok = MEDIANS_GZ_PATH.exists()
-    packs = list_packs()
+    packs_list = packs if packs is not None else list_packs()
 
-    ok = all(deps.values()) and bool(browser) and katex_ok and medians_ok and len(packs) > 0
+    ok = all(deps.values()) and bool(browser) and katex_ok and medians_ok and len(packs_list) > 0
     return {
         "ok": ok,
         "version": __version__,
@@ -66,7 +72,7 @@ def run_doctor() -> dict:
             "katex_ready": katex_ok,
             "medians_ready": medians_ok,
         },
-        "packs": packs,
+        "packs": packs_list,
     }
 
 
@@ -111,6 +117,7 @@ def run_preflight(
         if not ("\u4e00" <= ch <= "\u9fff") and not ch.isspace() and ch not in ("$", "#", "*", "`", "\\", "_", "^")
     })
     real_sym = [ch for ch in non_cjk if ch in pack.glyphs]
+    missing_glyphs = [ch for ch in non_cjk if ch not in pack.glyphs]
 
     coverage = round(len(real_cjk) / len(cjk_seen), 3) if cjk_seen else 1.0
     char_counts = Counter(
@@ -139,6 +146,7 @@ def run_preflight(
             "real_coverage_ratio": coverage,
         },
         "symbols_matched": len(real_sym),
+        "missing_glyphs": missing_glyphs,
         "high_freq_single_variants": high_freq_single[:40],
         "formula_splits": all_splits,
     }

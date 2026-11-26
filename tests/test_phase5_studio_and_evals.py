@@ -152,6 +152,11 @@ def run_phase5_tests() -> None:
             svg_txt = _http_get(base_url.rstrip("/") + ex_svg["files"][0]).decode("utf-8")
             assert "<svg" in svg_txt
 
+            ex_zip = _http_post_json(base_url + "api/scene/export-zip", {"format": "svg", "transparent": True})
+            assert ex_zip["ok"] and ex_zip["count"] >= 1
+            zip_bytes = _http_get(base_url.rstrip("/") + ex_zip["zip_url"])
+            assert zip_bytes[:2] == b"PK"
+
             fb = _http_post_json(base_url + "api/fontbuild", {"pack": "demo_sample", "format": "ttf"})
             assert fb["ok"] and fb["result"]["mapped_chars"] > 250
             ttf_bytes = _http_get(base_url.rstrip("/") + fb["font_url"])

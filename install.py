@@ -14,6 +14,8 @@ HERE = Path(__file__).resolve().parent
 
 def detect_agent() -> str:
     env = os.environ
+    if env.get("ANTIGRAVITY_AGENT") or env.get("AGY_SESSION") or (Path.home() / ".gemini" / "config").is_dir():
+        return "antigravity"
     if env.get("CLAUDECODE") or env.get("CLAUDE_CODE_ENTRYPOINT"):
         return "claude"
     if any(k.startswith("CODEX_") for k in env) or env.get("GEMINI_CLI") or env.get("CURSOR_TRACE_ID"):
@@ -22,6 +24,9 @@ def detect_agent() -> str:
 
 
 def target_dirs(agent: str, scope: str, project: Path) -> list[Path]:
+    if agent == "antigravity":
+        base = (Path.home() / ".gemini" / "config" / "skills") if scope == "user" else (project / ".agents" / "skills")
+        return [base / "inktwin"]
     base = Path.home() if scope == "user" else project
     mapping = {
         "claude": [base / ".claude" / "skills"],
@@ -32,37 +37,35 @@ def target_dirs(agent: str, scope: str, project: Path) -> list[Path]:
 
 
 def build_skill_text() -> str:
-    return f"""---
+    return """---
 name: inktwin
 description: 100% offline personal handwriting twin & math/physics vector PDF engine (.hwpack, .ttf/.otf, PDF overlay, handplot sketches, pen textures & Studio).
 ---
 
 # InkTwin Skill Wrapper
 
-Engine root: `{HERE}`
-
 ## Core Commands
 
 ```bash
 # Diagnostics & available packs
-python -m inktwin doctor --json
-python -m inktwin packs --json
+inktwin doctor --json
+inktwin packs --json
 
 # Collect handwriting -> forge .hwpack -> compile OpenType .ttf/.otf
-python -m inktwin template --tier tier1 -o tier1.pdf --json
-python -m inktwin harvest filled.pdf -o packs/local/my.hwpack --json
-python -m inktwin fontbuild --pack demo_sample --format ttf -o InkTwin.ttf --json
+inktwin template --tier tier1 -o tier1.pdf --json
+inktwin harvest filled.pdf -o packs/local/my.hwpack --json
+inktwin fontbuild --pack demo_sample --format ttf -o InkTwin.ttf --json
 
 # Preflight & render (standalone, DOCX worksheet, or blank PDF overlay)
-python -m inktwin preflight homework.md --pack demo_sample --json
-python -m inktwin render homework.md -o out.pdf --pack demo_sample --paper ruled8 --mood normal --pen-type gel --save-scene scene_dir --json
-python -m inktwin render homework.md --overlay blank_exam.pdf -o overlaid.pdf --pen-type fountain --export-layers layers_dir --json
+inktwin preflight homework.md --pack demo_sample --json
+inktwin render homework.md -o out.pdf --pack demo_sample --paper ruled8 --mood normal --pen-type gel --nib-mm 0.5 --save-scene scene_dir --json
+inktwin render homework.md --overlay blank_exam.pdf -o overlaid.pdf --pen-type fountain --export-layers layers_dir --json
 
 # Inspect, self-heal, edit, and launch Web Studio
-python -m inktwin inspect scene_dir --json
-python -m inktwin scene tighten scene_dir
-python -m inktwin scene drift scene_dir
-python -m inktwin studio --port 8765
+inktwin inspect scene_dir --json
+inktwin scene tighten scene_dir
+inktwin scene drift scene_dir
+inktwin studio --port 8765
 ```
 """
 
@@ -87,7 +90,7 @@ def write_skill_wrapper(dst: Path, link_src: Path | None = None) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Install InkTwin AI Agent skill wrapper")
-    ap.add_argument("--agent", choices=["auto", "agents", "claude", "both"], default="auto")
+    ap.add_argument("--agent", choices=["auto", "antigravity", "agents", "claude", "both"], default="auto")
     ap.add_argument("--scope", choices=["project", "user"], default="project")
     ap.add_argument("--project", default=os.getcwd())
     ap.add_argument("--link", action="store_true", help="Symlink a staged skill folder for development (falls back to copy if unprivileged)")

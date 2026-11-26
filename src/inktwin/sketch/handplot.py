@@ -9,6 +9,8 @@ import random
 import re
 from typing import Dict, List, Optional, Tuple
 
+from ..geom.ribbon import pts_to_ribbon_d as _pts_to_ribbon_d
+
 Point = Tuple[float, float]
 
 # Compact pressure-ribbon fallback polylines (in 0..100 box) for axis/label chars when pack lacks a glyph
@@ -119,30 +121,6 @@ def _wobble_segment(p0: Point, p1: Point, rng: random.Random, amp: float = 0.7, 
     return pts
 
 
-def _pts_to_ribbon_d(pts: List[Point], half_w: float = 0.82) -> str:
-    if len(pts) < 2:
-        return ""
-    n = len(pts)
-    left: List[Point] = []
-    right: List[Point] = []
-    for i, (px, py) in enumerate(pts):
-        if i == 0:
-            dx, dy = pts[1][0] - px, pts[1][1] - py
-        elif i == n - 1:
-            dx, dy = px - pts[n - 2][0], py - pts[n - 2][1]
-        else:
-            dx, dy = pts[i + 1][0] - pts[i - 1][0], pts[i + 1][1] - pts[i - 1][1]
-        ln = math.hypot(dx, dy) or 1.0
-        nx, ny = -dy / ln, dx / ln
-        u = i / max(1, n - 1)
-        r = max(0.32, half_w * (0.72 + 0.36 * math.sin(u * math.pi)))
-        left.append((px + nx * r, py + ny * r))
-        right.append((px - nx * r, py - ny * r))
-    poly = left + list(reversed(right))
-    cmds = [f"M{poly[0][0]:.2f} {poly[0][1]:.2f}"] + [f"L{x:.2f} {y:.2f}" for x, y in poly[1:]] + ["Z"]
-    return "".join(cmds)
-
-
 def _arrow_paths(p0: Point, p1: Point, rng: random.Random, half_w: float = 0.82, amp: float = 0.65, head_len: float = 5.8) -> List[str]:
     shaft = _wobble_segment(p0, p1, rng, amp=amp)
     dx, dy = p1[0] - p0[0], p1[1] - p0[1]
@@ -219,6 +197,31 @@ def _draw_label_paths(
                 if d:
                     out.append((d, color))
             cur_x += fw * sc + h_px * 0.08
+        elif "\u4e00" <= ch <= "\u9fff":
+            placed_cjk = False
+            try:
+                from ..synth.cjk_synth import load_medians_db, synthesize_personal_hanzi_variant
+
+                mdb = load_medians_db()
+                m_entry = mdb.get(ch)
+                if m_entry:
+                    st_model = pack.style_model if pack is not None else {}
+                    rads = pack.radicals if pack is not None else {}
+                    strks = pack.strokes if pack is not None else {}
+                    sv = synthesize_personal_hanzi_variant(
+                        ch, m_entry, st_model, rads, seed=rng.randint(1, 99999), strokes_db=strks,
+                    )
+                    if sv and sv.get("d"):
+                        vw = max(10.0, float(sv.get("w", 92.0)))
+                        vh = max(10.0, float(sv.get("h", 100.0)))
+                        sc = h_px / vh
+                        out.append((_transform_svg_path(sv["d"], cur_x, y_px, sc, sc), color))
+                        cur_x += vw * sc + h_px * 0.06
+                        placed_cjk = True
+            except Exception:
+                placed_cjk = False
+            if not placed_cjk:
+                cur_x += h_px * 0.65
         else:
             cur_x += h_px * 0.45
     return out

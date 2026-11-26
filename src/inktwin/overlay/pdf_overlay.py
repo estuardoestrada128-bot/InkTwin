@@ -141,51 +141,67 @@ def detect_pdf_layout(pdf_path: Path, min_slot_h_mm: float = 15.0) -> dict:
             obstacles.extend(page_obs)
             page_anchors.sort(key=lambda a: a[0])
 
-            # Compute open vertical bands avoiding all page obstacles
-            occ_intervals = [
-                (obs["y"], obs["y"] + obs["h"])
-                for obs in page_obs
-                if obs["y"] + obs["h"] > 10.0 and obs["y"] < h_mm - 10.0
-            ]
-            merged_occ = _merge_vertical_bands(occ_intervals, merge_gap=3.8)
-
-            # Candidate blank gaps between merged obstacle bands + trailing bottom blank
-            gaps: List[Tuple[float, float]] = []
-            for i in range(len(merged_occ) - 1):
-                g_top = merged_occ[i][1] + 2.2
-                g_bot = merged_occ[i + 1][0] - 2.2
-                if g_bot - g_top >= min_slot_h_mm:
-                    gaps.append((g_top, g_bot))
-            if merged_occ:
-                last_bot = merged_occ[-1][1] + 2.5
-                if (h_mm - 14.0) - last_bot >= min_slot_h_mm:
-                    gaps.append((last_bot, h_mm - 14.0))
-            elif page_anchors:
-                gaps.append((18.0, h_mm - 14.0))
+            # Detect balanced two-column exam layout vs standard single-column flow
+            txt_obs = [o for o in page_obs if o["kind"] == "text"]
+            mid_x = w_mm * 0.50
+            left_cnt = sum(1 for o in txt_obs if (o["x"] + o["w"]) < mid_x)
+            right_cnt = sum(1 for o in txt_obs if o["x"] > mid_x)
+            cross_cnt = sum(1 for o in txt_obs if o["x"] < mid_x - 4.0 and (o["x"] + o["w"]) > mid_x + 4.0)
+            is_two_col = left_cnt >= 2 and right_cnt >= 2 and cross_cnt <= max(1, int(0.2 * len(txt_obs)))
 
             first_anchor_y = page_anchors[0][0] if page_anchors else (h_mm + 10.0 if active_qnum == 0 else -1.0)
             slot_idx = 0
-            for gy0, gy1 in gaps:
-                if gy0 < first_anchor_y and active_qnum == 0:
-                    # Whitespace inside top document header before Q1 starts: do not place answers there
-                    continue
-                q_own = active_qnum
-                for ay, qn in page_anchors:
-                    if ay <= gy0:
-                        q_own = qn
-                if q_own <= 0:
-                    q_own = 1
-                boxes.append({
-                    "id": f"p{pno}_q{q_own}_{slot_idx}",
-                    "page": pno,
-                    "qnum": q_own,
-                    "kind": "rect",
-                    "x_mm": 16.0,
-                    "y_mm": round(gy0, 2),
-                    "w_mm": round(max(40.0, w_mm - 32.0), 2),
-                    "h_mm": round(gy1 - gy0, 2),
-                })
-                slot_idx += 1
+
+            def _emit_band_boxes(obs_list: List[dict], col_x: float, col_w: float, anchors: List[Tuple[float, int]]) -> None:
+                nonlocal slot_idx
+                occ = [
+                    (obs["y"], obs["y"] + obs["h"])
+                    for obs in obs_list
+                    if obs["y"] + obs["h"] > 10.0 and obs["y"] < h_mm - 10.0
+                ]
+                merged = _merge_vertical_bands(occ, merge_gap=3.8)
+                band_gaps: List[Tuple[float, float]] = []
+                for i in range(len(merged) - 1):
+                    g_top = merged[i][1] + 2.2
+                    g_bot = merged[i + 1][0] - 2.2
+                    if g_bot - g_top >= min_slot_h_mm:
+                        band_gaps.append((g_top, g_bot))
+                if merged:
+                    last_b = merged[-1][1] + 2.5
+                    if (h_mm - 14.0) - last_b >= min_slot_h_mm:
+                        band_gaps.append((last_b, h_mm - 14.0))
+                elif anchors:
+                    band_gaps.append((18.0, h_mm - 14.0))
+
+                fa_y = anchors[0][0] if anchors else (h_mm + 10.0 if active_qnum == 0 else -1.0)
+                for gy0, gy1 in band_gaps:
+                    if gy0 < fa_y and active_qnum == 0:
+                        continue
+                    q_own = active_qnum
+                    for ay, qn in anchors:
+                        if ay <= gy0:
+                            q_own = qn
+                    if q_own <= 0:
+                        q_own = 1
+                    boxes.append({
+                        "id": f"p{pno}_q{q_own}_{slot_idx}",
+                        "page": pno,
+                        "qnum": q_own,
+                        "kind": "rect",
+                        "x_mm": round(col_x, 2),
+                        "y_mm": round(gy0, 2),
+                        "w_mm": round(max(40.0, col_w), 2),
+                        "h_mm": round(gy1 - gy0, 2),
+                    })
+                    slot_idx += 1
+
+            if is_two_col:
+                l_obs = [o for o in page_obs if (o["x"] + o["w"] * 0.5) <= mid_x]
+                r_obs = [o for o in page_obs if (o["x"] + o["w"] * 0.5) > mid_x]
+                _emit_band_boxes(l_obs, 14.0, mid_x - 18.0, page_anchors)
+                _emit_band_boxes(r_obs, mid_x + 4.0, w_mm - mid_x - 18.0, page_anchors)
+            else:
+                _emit_band_boxes(page_obs, 16.0, w_mm - 32.0, page_anchors)
 
             for fx, fy, fw, fh in framed_slots:
                 fcx, fcy = fx + fw * 0.5, fy + fh * 0.5
@@ -256,8 +272,14 @@ def apply_marks_to_scene(scene_data: dict, marks: Optional[List[dict]]) -> None:
                 g["color"] = col
             if scale is not None:
                 k = float(scale)
-                g["w"] = round(g["w"] * k, 3)
-                g["h"] = round(g["h"] * k, 3)
+                cx = g["x"] + g["w"] * 0.5
+                cy = g["y"] + g["h"] * 0.5
+                nw = g["w"] * k
+                nh = g["h"] * k
+                g["x"] = round(cx - nw * 0.5, 3)
+                g["y"] = round(cy - nh * 0.5, 3)
+                g["w"] = round(nw, 3)
+                g["h"] = round(nh, 3)
 
 
 def stamp_scene_onto_pdf(

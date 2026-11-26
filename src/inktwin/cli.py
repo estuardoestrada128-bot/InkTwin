@@ -190,6 +190,7 @@ def _cmd_render(args: argparse.Namespace) -> int:
             )
 
     pen_type = getattr(args, "pen_type", "gel") or "gel"
+    nib_mm = float(getattr(args, "nib_mm", 0.5) or 0.5)
     need_scene = bool(args.save_scene or effective_mode == "pdf_overlay" or pen_type != "gel" or args.export_layers)
 
     html_str, formula_splits = build_html(
@@ -228,6 +229,12 @@ def _cmd_render(args: argparse.Namespace) -> int:
     else:
         captured_scene = export_html_to_pdf(html_str, out_pdf, pack=pack if use_pg else None, keep_html_path=keep_html_path)
 
+    if (post_render_via_scene or need_scene) and captured_scene is None:
+        raise RuntimeError(
+            "InkScene geometry capture failed (__INKTWIN_SCENE__ was not received from Chrome). "
+            "Try reducing input complexity or inspecting Chrome output with --keep-html."
+        )
+
     if captured_scene is not None and layout_spec and layout_spec.get("marks"):
         apply_marks_to_scene(captured_scene, layout_spec.get("marks"))
 
@@ -257,15 +264,27 @@ def _cmd_render(args: argparse.Namespace) -> int:
             sc_obj, sc_edits, _ = load_inkscene(s_dir)
             resolved_sc = resolve_scene_state(sc_obj, sc_edits)
             if effective_mode == "pdf_overlay" and overlay_pdf is not None and overlay_pdf.exists():
-                stamp_scene_onto_pdf(overlay_pdf, resolved_sc, out_pdf, pen_type=pen_type, dpi=300, seed=seed)
+                stamp_scene_onto_pdf(
+                    overlay_pdf, resolved_sc, out_pdf, pen_type=pen_type, dpi=300, seed=seed,
+                    nib_mm=nib_mm, ink_override=args.ink,
+                )
             else:
-                export_scene(s_dir, out_pdf=out_pdf, fmt="pdf", dpi=300, pen_type=pen_type, seed=seed)
+                export_scene(
+                    s_dir, out_pdf=out_pdf, fmt="pdf", dpi=300, pen_type=pen_type, seed=seed,
+                    nib_mm=nib_mm, ink_override=args.ink,
+                )
 
         exported_layers: List[str] = []
         if args.export_layers and s_dir is not None:
             ldir = Path(args.export_layers).resolve()
-            r_svg = export_scene(s_dir, out_dir=ldir, fmt="svg", transparent=True, pen_type="gel", seed=seed)
-            r_png = export_scene(s_dir, out_dir=ldir, fmt="png", dpi=300, transparent=True, pen_type=pen_type, seed=seed)
+            r_svg = export_scene(
+                s_dir, out_dir=ldir, fmt="svg", transparent=True, pen_type="gel", seed=seed,
+                nib_mm=nib_mm, ink_override=args.ink,
+            )
+            r_png = export_scene(
+                s_dir, out_dir=ldir, fmt="png", dpi=300, transparent=True, pen_type=pen_type, seed=seed,
+                nib_mm=nib_mm, ink_override=args.ink,
+            )
             exported_layers = r_svg.get("outputs", []) + r_png.get("outputs", [])
     finally:
         if tmp_scene_ctx is not None:
@@ -275,11 +294,13 @@ def _cmd_render(args: argparse.Namespace) -> int:
         "ok": True,
         "output_pdf": str(out_pdf),
         "scene_dir": saved_scene_dir,
+        "exported_layers": exported_layers,
         "pack": pack.id,
         "mode": effective_mode,
         "paper": paper_spec.id,
         "page_size": args.page_size,
         "ink": args.ink,
+        "nib_mm": nib_mm,
         "mood": args.mood,
         "total_chars": len(pack.glyphs),
         "real_cjk_chars": pack.real_cjk_count,
@@ -322,14 +343,12 @@ def _add_render_flags(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-elastic", action="store_true", help="Disable adaptive vector elastic micro-variation on repeated glyphs")
     p.add_argument("--no-personal", action="store_true")
     p.add_argument("--no-personal-cjk", action="store_true")
-    p.add_argument("--personal-cjk", action="store_true")
-    p.add_argument("--cn-font", default="learned")
-    p.add_argument("--en-font", default="auto")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--tag", default="")
     p.add_argument("--overlay", default=None, help="Blank PDF worksheet path to overlay handwriting onto")
     p.add_argument("--layout-json", default=None, help="Declarative layout.json (boxes + marks) for PDF overlay")
     p.add_argument("--pen-type", choices=list(PEN_TYPES), default="gel", help="Physical pen ink texture preset")
+    p.add_argument("--nib-mm", type=float, default=0.5, help="Physical nib diameter in mm (0.25 - 1.2)")
     p.add_argument("--export-layers", default=None, help="Directory to export transparent SVG + PNG layers")
     p.add_argument("--save-scene", default=None, help="Save editable InkScene directory (scene.json + edits.json)")
     p.add_argument("--keep-html", action="store_true")
@@ -445,6 +464,12 @@ def _cmd_studio(args: argparse.Namespace) -> int:
         reload=bool(getattr(args, "reload", False)),
     )
     return 0
+
+
+def _cmd_mcp(_args: argparse.Namespace) -> int:
+    from .mcp_server import run_mcp_server
+
+    return int(run_mcp_server())
 
 
 def _cmd_template(args: argparse.Namespace) -> int:
@@ -633,25 +658,51 @@ def build_parser() -> argparse.ArgumentParser:
     p_st.add_argument("--reload", action="store_true", help="Auto-reload backend and browser on source edits (development mode)")
     p_st.set_defaults(func=_cmd_studio)
 
+    p_mcp = sub.add_parser("mcp", help="Run optional InkTwin MCP stdio server (requires inktwin[mcp])")
+    p_mcp.set_defaults(func=_cmd_mcp)
+
     return parser
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    import difflib
+
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw == ["--setup"]:
         return _cmd_doctor(argparse.Namespace(json=False))
-    known_cmds = {
+    subcommands = {
         "doctor", "packs", "preflight", "render", "inspect", "scene",
-        "template", "harvest", "fontbuild", "layout-detect", "studio", "-h", "--help",
+        "template", "harvest", "fontbuild", "layout-detect", "studio", "mcp",
     }
-    if raw and raw[0] not in known_cmds:
-        raw = ["render"] + raw
-    elif not raw:
+    known_cmds = subcommands | {"-h", "--help"}
+    want_json = "--json" in raw
+    if not raw:
         raw = ["--help"]
+    elif raw[0] not in known_cmds:
+        first = raw[0]
+        if first.startswith("-"):
+            raw = ["render"] + raw
+        else:
+            matches = difflib.get_close_matches(first, sorted(subcommands), n=1, cutoff=0.6)
+            if matches and not Path(first).exists() and not first.lower().endswith(".md"):
+                msg = f"Unknown subcommand '{first}'. Did you mean '{matches[0]}'?"
+                if want_json:
+                    print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False))
+                else:
+                    print(f"[Error] {msg}", file=sys.stderr)
+                return 2
+            raw = ["render"] + raw
 
     parser = build_parser()
     args = parser.parse_args(raw)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except Exception as exc:
+        if want_json or getattr(args, "json", False):
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        else:
+            print(f"[Error] {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

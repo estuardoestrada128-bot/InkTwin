@@ -17,8 +17,8 @@ outputs/
 *.pdf
 *.png
 *.html
-!assets/katex/**
-!assets/templates/*.pdf
+!src/inktwin/assets/katex/**
+!src/inktwin/assets/templates/*.pdf
 !src/**/*.html
 !docs/**/*.png
 
