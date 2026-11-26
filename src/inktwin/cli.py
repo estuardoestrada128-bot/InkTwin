@@ -594,7 +594,7 @@ def build_parser() -> argparse.ArgumentParser:
     ps_ed.set_defaults(func=_cmd_scene_editor)
 
     p_tpl = sub.add_parser("template", help="Generate printable/iPad handwriting calibration sheet PDF")
-    p_tpl.add_argument("--tier", choices=["tier1", "tier2", "targeted"], default="tier1")
+    p_tpl.add_argument("--tier", choices=["full", "tier1", "tier2", "targeted"], default="tier1")
     p_tpl.add_argument("--chars", default=None, help="Explicit characters for targeted sheet")
     p_tpl.add_argument("--from-md", default=None, help="Auto-detect unseen chars from Markdown for targeted sheet")
     p_tpl.add_argument("-p", "--pack", default=None)

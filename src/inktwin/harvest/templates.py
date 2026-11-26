@@ -217,6 +217,20 @@ def build_template_cells(
             titles[0] = "InkTwin Targeted Sheet (Fallback Default Set) - Write with Dark Ink"
         return all_cells, titles
 
+    if tier_l in ("full", "all", "standard"):
+        c1, _ = build_template_cells(tier="tier1")
+        c2, _ = build_template_cells(tier="tier2")
+        for c in c2:
+            c.page = 3
+            suffix = c.cell_id.split("_", 1)[1] if "_" in c.cell_id else c.cell_id
+            c.cell_id = f"p3_{suffix}"
+        return c1 + c2, {
+            0: "InkTwin Standard Sheet (1/4): Digits, Lowercase & Uppercase Letters",
+            1: "InkTwin Standard Sheet (2/4): Math Operators, Delimiters, Bars & Core Greek",
+            2: "InkTwin Standard Sheet (3/4): Stroke DNA, 24 Radicals & Core STEM Hanzi",
+            3: "InkTwin Standard Sheet (4/4): Extended Greek, Physics Symbols & STEM Hanzi",
+        }
+
     if tier_l == "tier2":
         items = []
         greek_upper = "ΓΘΛΞΠΣΥΦΨΩ"

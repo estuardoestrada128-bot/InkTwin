@@ -153,17 +153,13 @@
   <section id="tab-forge" class="tab">
     <div class="grid g3">
       <div class="card">
-        <h2>1. 下载采集字帖</h2>
-        <p class="desc">标准字帖人人相同，直接点下面下载即可；导进平板（StarNote / GoodNotes）用深色笔填满蓝框，导出为矢量 PDF。</p>
-        <div class="actions" style="margin-top:6px">
-          <a class="btn primary" href="/api/template/download?tier=tier1" download="InkTwin-Tier1.pdf">⬇ Tier 1 基础字帖（3 页）</a>
-          <button class="btn" data-tpl-pv="tier1" title="在线预览 Tier 1 字帖内容">👁 预览</button>
-        </div>
+        <h2>1. 下载完整采集字帖</h2>
+        <p class="desc">已将基础字形（数字/字母/数学/笔画/偏旁/高频汉字）与进阶物理/希腊字母合成为 1 份 4 页标准字帖；导进平板用深色笔填满蓝框后导出矢量 PDF。</p>
         <div class="actions" style="margin-top:8px">
-          <a class="btn" href="/api/template/download?tier=tier2" download="InkTwin-Tier2.pdf">⬇ Tier 2 进阶物理/希腊字母（1 页）</a>
-          <button class="btn" data-tpl-pv="tier2" title="在线预览 Tier 2 字帖内容">👁 预览</button>
+          <a class="btn primary" href="/api/template/download?tier=full" download="InkTwin-Standard.pdf">⬇ 下载完整采集字帖（4 页合集）</a>
+          <button class="btn" data-tpl-pv="full" title="在线预览 4 页标准采集字帖">👁 预览</button>
         </div>
-        <hr style="border:0;border-top:1px dashed var(--line);margin:14px 0 10px" />
+        <hr style="border:0;border-top:1px dashed var(--line);margin:16px 0 10px" />
         <label>按需生成补字帖（填想补的字；留空则自动按「排版」页缺字生成）</label>
         <input id="tpl-chars" type="text" placeholder="例如：微积分ℏ∇（留空按当前作业缺字）" />
         <div class="actions"><button class="btn" id="btn-tpl">生成并下载补字帖 PDF</button></div>
@@ -211,13 +207,12 @@
         <h2 style="margin:0">4. 字库变体体检 &amp; 删坏字</h2>
         <select id="vi-pack" class="pack-select"></select>
         <button class="btn" id="btn-vi-clone" title="复制一份到 packs/local/ 以便安全删改">克隆到本地编辑</button>
-        <button class="btn" id="btn-vi-supp" title="把当前字库里只有 1 个变体的字母和符号填入上方「靶向微字帖」">给单变体符号出补字帖</button>
-        <button class="btn" id="btn-vi-cleanup" title="查看并一键删除疑似异常变体，同时自动出补写字帖 PDF" style="border-color:var(--bad);color:var(--bad)">一键清理异常并补齐</button>
+        <button class="btn primary" id="btn-vi-cleanup" title="统一清理异常变体，并将单变体符号与缺失偏旁合并生成 1 份补写字帖 PDF">一键维护并出补字帖</button>
         <button class="btn" id="btn-vi-undo-clean" hidden title="恢复到上次批量清理前的字库快照">↶ 撤销上次清理</button>
       </div>
-      <p class="desc">逐字预览每个手写变体的真实矢量轮廓，自动标出过粗、过细、比例偏离或残缺的疑似坏字；支持一键批量清理异常并生成靶向补写字帖。</p>
+      <p class="desc">逐字预览手写变体轮廓，自动标出过粗、过细、比例偏离或残缺；点击「一键维护并出补字帖」可一次清理异常并把单变体符号/缺失偏旁合出 1 份补写字帖。</p>
       <div id="vi-summary" class="vi-pills"></div>
-      <div id="vi-missing" class="out" hidden style="margin-top:0;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"></div>
+      <div id="vi-missing" class="out" hidden style="margin-top:0;margin-bottom:10px"></div>
       <div class="vi-bar">
         <div class="vi-tabs" id="vi-tabs">
           <button data-vf="all" class="active">全部</button>
@@ -413,20 +408,22 @@
 <div id="clean-modal" class="modal-bg">
   <div class="cm-card">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-      <h2 style="margin:0;font-size:16px">一键清理异常变体并生成补写字帖</h2>
+      <h2 style="margin:0;font-size:16px">一键维护字库 &amp; 合并生成 1 份补字帖</h2>
       <button class="btn" id="btn-cm-close">关闭 (Esc)</button>
     </div>
     <div id="cm-summary" class="vi-pills" style="margin:0"></div>
     <div id="cm-filters" style="display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;align-items:center"></div>
     <div id="cm-list" class="cm-list"></div>
     <div id="cm-fallbacks" class="out" hidden style="margin:0;max-height:76px;background:#fffbf2;color:#8a5508"></div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12.5px">
-      <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-gen-sheet" type="checkbox" checked style="width:auto" /> 清理后自动生成补写字帖 PDF（删空/兜底字给 3 格，仅剩 1 变体给 2 格）</label>
-      <label id="cm-rad-wrap" style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-inc-rad" type="checkbox" checked style="width:auto" /> <span id="cm-rad-lbl">顺带补全缺失偏旁</span></label>
+    <div style="background:#f8f9fc;border:1px solid var(--line);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;font-size:12.5px">
+      <b style="font-size:12.5px">合并输出为 1 份补写字帖 PDF（按需勾选要合入的项目）：</b>
+      <label id="cm-anom-wrap" style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-inc-anom" type="checkbox" checked style="width:auto" /> <span id="cm-anom-lbl">异常删空/兜底字（3 格）与受影响剩 1 变体（2 格）</span></label>
+      <label id="cm-single-wrap" style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-inc-single" type="checkbox" checked style="width:auto" /> <span id="cm-single-lbl">现有单变体字母与符号（2 格）</span></label>
+      <label id="cm-rad-wrap" style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-inc-rad" type="checkbox" checked style="width:auto" /> <span id="cm-rad-lbl">缺失常用偏旁（2 格）</span></label>
     </div>
     <div class="actions" style="margin-top:4px;justify-content:flex-end">
       <button class="btn" id="btn-cm-cancel">取消</button>
-      <button class="btn primary" id="btn-cm-apply" style="background:var(--bad);border-color:var(--bad)">确认清理并生成字帖</button>
+      <button class="btn primary" id="btn-cm-apply">执行清理并下载 1 份补字帖</button>
     </div>
   </div>
 </div>
@@ -842,13 +839,17 @@ function renderPackInspect() {
   cloneBtn.classList.toggle('suggest', !pk.editable);
 
   const lowList = pk.low_variant_non_cjk || [];
-  const suppBtn = $('#btn-vi-supp');
-  suppBtn.disabled = lowList.length === 0;
-  suppBtn.textContent = lowList.length > 0 ? `给单变体符号出补字帖 (${lowList.length})` : '字母符号均有多变体';
+  const missRadList = pk.missing_radicals || [];
+  const flagCnt = pk.flagged_variants || 0;
+  const todoCnt = flagCnt + lowList.length + missRadList.length;
 
   const cleanBtn = $('#btn-vi-cleanup');
-  cleanBtn.disabled = (pk.flagged_variants || 0) === 0;
-  cleanBtn.textContent = pk.flagged_variants ? `一键清理异常并补齐 (${pk.flagged_variants})` : '无异常变体';
+  cleanBtn.disabled = todoCnt === 0;
+  const parts = [];
+  if (flagCnt) parts.push(`异常${flagCnt}`);
+  if (lowList.length) parts.push(`单变体${lowList.length}`);
+  if (missRadList.length) parts.push(`偏旁${missRadList.length}`);
+  cleanBtn.textContent = todoCnt ? `一键维护并出补字帖（${parts.join(' · ')}）` : '字库状态良好 · 无需补写';
   $('#btn-vi-undo-clean').hidden = !pk.has_backup;
 
   const recentSet = new Set(S.viRecentChars || []);
@@ -886,17 +887,10 @@ function renderPackInspect() {
   const miss = $('#vi-missing');
   if (pk.missing_radicals && pk.missing_radicals.length) {
     miss.hidden = false;
-    miss.innerHTML = `<span>缺少 ${pk.missing_radicals.length} 个常用偏旁（明显影响生字合成）：<b>${escHtml(pk.missing_radicals.join(' '))}</b></span><button class="btn" id="btn-vi-rads" style="padding:4px 10px;font-size:12px">→ 一键生成缺失偏旁补字帖</button>`;
-    $('#btn-vi-rads').onclick = (e) => busy(e.currentTarget, async () => {
-      const j = await api('/api/template', { tier: 'targeted', radicals: pk.missing_radicals });
-      $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" download="InkTwin-MissingRadicals.pdf">⬇ 下载缺失偏旁补字帖（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
-      $('#tpl-thumbs').innerHTML = j.previews.map((s, idx) => `<img src="${s}" title="点击放大第 ${idx + 1} 页">`).join('');
-      const a = document.createElement('a'); a.href = j.pdf_url; a.download = 'InkTwin-MissingRadicals.pdf'; a.click();
-      openImageModal(`缺失偏旁专项补字帖（${pk.missing_radicals.length} 个偏旁）`, j.previews, { downloadUrl: j.pdf_url, downloadName: 'InkTwin-MissingRadicals.pdf' });
-    });
+    miss.textContent = `缺少 ${pk.missing_radicals.length} 个常用偏旁（可点上方「一键维护并出补字帖」一起合出）：${pk.missing_radicals.join(' ')}`;
   } else {
     miss.hidden = true;
-    miss.innerHTML = '';
+    miss.textContent = '';
   }
 
   const q = ($('#vi-search').value || '').trim().toLowerCase();
@@ -1005,15 +999,6 @@ $('#btn-vi-clone').onclick = (e) => busy(e.currentTarget, async () => {
   toast('已克隆到本地字库：' + j.id);
 });
 
-$('#btn-vi-supp').onclick = () => {
-  if (!S.packInspect) { toast('请先加载字库体检', true); return; }
-  const low = S.packInspect.pack.low_variant_non_cjk || [];
-  if (!low.length) { toast('当前字库的字母与符号都已有多个变体！'); return; }
-  $('#tpl-chars').value = low.join('');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  toast(`已填入 ${low.length} 个单变体符号，点击「生成并下载补字帖 PDF」即可下载`);
-};
-
 $('#btn-cm-close').onclick = $('#btn-cm-cancel').onclick = () => $('#clean-modal').classList.remove('open');
 $('#clean-modal').onclick = (e) => { if (e.target === $('#clean-modal')) $('#clean-modal').classList.remove('open'); };
 
@@ -1022,6 +1007,13 @@ function renderCleanModalList() {
   if (!plan) return;
   const activeFlags = new Set($$('#cm-filters input[data-cflag]:checked').map(x => x.dataset.cflag));
   const list = $('#cm-list');
+  const hasDel = (plan.deletions || []).length > 0;
+  $('#cm-filters').style.display = hasDel ? 'flex' : 'none';
+  list.style.display = hasDel ? 'grid' : 'none';
+  if (!hasDel) {
+    list.innerHTML = '';
+    return;
+  }
   list.innerHTML = (plan.deletions || []).map((it, i) => {
     const show = !it.flags.length || it.flags.some(f => activeFlags.has(f));
     const checked = it._keep === false ? false : show;
@@ -1032,7 +1024,7 @@ function renderCleanModalList() {
       ? `<path d="${escHtml(it.d)}" fill="#1d2230" fill-rule="nonzero"/>`
       : `<path d="${escHtml(it.d)}" fill="none" stroke="#1d2230" stroke-width="${Math.max(2, it.t || 4)}" stroke-linecap="round"/>`;
     return `<label class="cm-item ${checked ? 'checked' : ''}" data-ci="${i}"><input type="checkbox" ${checked ? 'checked' : ''} /><div><b>${escHtml(STRUCT_NAMES[it.char] || it.char)}</b> #${it.vidx + 1}</div><svg viewBox="${vb}">${shape}</svg><div style="color:var(--bad)">${escHtml(it.flags.join('·'))}</div><div style="color:var(--muted)">t=${it.t}</div></label>`;
-  }).join('') || '<div class="empty" style="grid-column:1/-1;padding:24px 0">没有可自动删除的异常变体（见下方兜底说明）。</div>';
+  }).join('');
 
   $$('#cm-list .cm-item input').forEach(inp => {
     inp.onchange = () => {
@@ -1047,26 +1039,28 @@ $('#btn-vi-cleanup').onclick = (e) => busy(e.currentTarget, async () => {
   let pid = $('#vi-pack').value || (S.packInspect && S.packInspect.pack.id);
   if (!pid) throw new Error('请先选择字库');
   let plan = await api('/api/pack/cleanup-plan', { pack: pid });
-  if (!plan.editable) {
-    if (!confirm('当前字库是公开只读示例，是否先自动克隆一份到本地副本再执行一键清理？')) return;
-    const newId = pid + '_custom';
-    const cl = await api('/api/pack/clone-local', { pack: pid, new_id: newId });
+  const lowSingle = plan.low_variant_non_cjk || [];
+  const missRad = plan.missing_radicals || [];
+  if (plan.deletions.length && !plan.editable) {
+    if (!confirm('当前字库是公开只读示例，删除异常变体需先自动克隆到本地副本；是否克隆并继续？')) return;
+    const cl = await api('/api/pack/clone-local', { pack: pid, new_id: pid + '_custom' });
     await loadState();
     pid = cl.id;
     $('#vi-pack').value = pid;
     await loadPackInspect();
     plan = await api('/api/pack/cleanup-plan', { pack: pid });
   }
-  if (!plan.deletions.length && !plan.kept_fallbacks.length) {
-    toast('当前字库没有任何异常变体！');
+  if (!plan.deletions.length && !plan.kept_fallbacks.length && !lowSingle.length && !missRad.length) {
+    toast('当前字库状态良好，没有异常、单变体或缺失偏旁！');
     return;
   }
   S.cleanPlan = plan;
   const fc = plan.flag_counts || {};
   $('#cm-summary').innerHTML =
-    `<span class="pill bad">待删除异常：${plan.deletions.length} 个</span>` +
-    `<span class="pill warn">暂留兜底防缺字：${plan.kept_fallbacks.length} 个</span>` +
-    `<span class="pill">补字帖计划：3格×${plan.refill_priority3.length} 字 · 2格×${plan.refill_priority2.length} 字</span>`;
+    `<span class="pill ${plan.deletions.length ? 'bad' : 'ok'}">${plan.deletions.length ? `待删异常：${plan.deletions.length} 个` : '✓ 无待删异常变体'}</span>` +
+    (plan.kept_fallbacks.length ? `<span class="pill warn">暂留兜底防缺字：${plan.kept_fallbacks.length} 个</span>` : '') +
+    `<span class="pill">单变体符号：${lowSingle.length} 个</span>` +
+    `<span class="pill">缺失偏旁：${missRad.length} 个</span>`;
   $('#cm-filters').innerHTML = `<span style="color:var(--muted)">按异常类型勾选：</span>` +
     ['残缺', '过粗', '过细', '比例偏离'].map(fl =>
       `<label style="margin:0;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" data-cflag="${fl}" checked style="width:auto" /> ${fl} (${fc[fl] || 0})</label>`
@@ -1082,10 +1076,20 @@ $('#btn-vi-cleanup').onclick = (e) => busy(e.currentTarget, async () => {
   } else {
     fb.hidden = true;
   }
-  const missRad = plan.missing_radicals || [];
+  const anomCnt = plan.refill_priority3.length + plan.refill_priority2.length;
+  $('#cm-anom-wrap').style.display = (plan.deletions.length || anomCnt) ? 'flex' : 'none';
+  $('#cm-anom-lbl').textContent = `清理造成的空缺与兜底字符（3格×${plan.refill_priority3.length} · 2格×${plan.refill_priority2.length}）`;
+  $('#cm-inc-anom').checked = (plan.deletions.length || anomCnt) > 0;
+
+  $('#cm-single-wrap').style.display = lowSingle.length ? 'flex' : 'none';
+  $('#cm-single-lbl').textContent = `现有仅 1 变体的字母与符号（${lowSingle.length} 个，各 2 格）`;
+  $('#cm-inc-single').checked = lowSingle.length > 0;
+
   $('#cm-rad-wrap').style.display = missRad.length ? 'flex' : 'none';
-  $('#cm-rad-lbl').textContent = `顺带补全缺失偏旁（${missRad.length} 个）`;
+  $('#cm-rad-lbl').textContent = `缺失核心偏旁（${missRad.length} 个，各 2 格）`;
   $('#cm-inc-rad').checked = missRad.length > 0;
+
+  $('#btn-cm-apply').textContent = plan.deletions.length ? '执行清理并下载 1 份补字帖' : '合并生成并下载 1 份补字帖';
   renderCleanModalList();
   $('#clean-modal').classList.add('open');
 });
@@ -1101,26 +1105,32 @@ $('#btn-cm-apply').onclick = (e) => busy(e.currentTarget, async () => {
       selected.push({ char: it.char, vidx: it.vidx });
     }
   });
-  const genSheet = $('#cm-gen-sheet').checked;
+  const incAnom = $('#cm-inc-anom').checked;
+  const incSingle = $('#cm-inc-single').checked;
+  const incRad = $('#cm-inc-rad').checked;
   const res = await api('/api/pack/cleanup-apply', {
     pack: plan.pack,
     items: selected,
-    generate_sheet: genSheet,
-    include_missing_radicals: $('#cm-inc-rad').checked,
-    force_sheet: genSheet && (plan.kept_fallbacks.length > 0),
+    generate_sheet: incAnom || incSingle || incRad,
+    include_anomaly_refill: incAnom,
+    include_single_variants: incSingle,
+    include_missing_radicals: incRad,
   });
   $('#clean-modal').classList.remove('open');
-  await loadState();
-  $('#vi-pack').value = res.pack;
-  await loadPackInspect();
+  if (res.deleted_count > 0) {
+    await loadState();
+    $('#vi-pack').value = res.pack;
+    await loadPackInspect();
+  }
   if (res.sheet) {
     const sh = res.sheet;
-    $('#tpl-out').innerHTML = `<a href="${sh.pdf_url}" download="InkTwin-Refill.pdf">⬇ 下载补写字帖 PDF（${sh.result.pages} 页 / ${sh.result.cells} 格）</a>`;
+    $('#tpl-out').innerHTML = `<a href="${sh.pdf_url}" download="InkTwin-Refill.pdf">⬇ 下载合并补写字帖 PDF（${sh.result.pages} 页 / ${sh.result.cells} 格）</a>`;
     $('#tpl-thumbs').innerHTML = sh.previews.map((s, idx) => `<img src="${s}" title="点击放大第 ${idx + 1} 页">`).join('');
+    $$('#tpl-thumbs img').forEach(im => im.onclick = () => openImageModal('合并补写字帖预览', sh.previews, { downloadUrl: sh.pdf_url, downloadName: 'InkTwin-Refill.pdf' }));
     const a = document.createElement('a'); a.href = sh.pdf_url; a.download = 'InkTwin-Refill.pdf'; a.click();
-    openImageModal(`清理后补写字帖（3格×${sh.priority3_count} · 2格×${sh.priority2_count} · 偏旁×${sh.radicals_count}）`, sh.previews, { downloadUrl: sh.pdf_url, downloadName: 'InkTwin-Refill.pdf' });
+    openImageModal(`合并补写字帖（${sh.result.pages} 页 / ${sh.result.cells} 格）`, sh.previews, { downloadUrl: sh.pdf_url, downloadName: 'InkTwin-Refill.pdf' });
   }
-  toast(`已清理 ${res.deleted_count} 个异常变体（已自动备份，可点「撤销上次清理」恢复）`);
+  toast(res.deleted_count > 0 ? `已清理 ${res.deleted_count} 个异常变体并合出补写字帖（可撤销）` : '已合并生成 1 份补写字帖 PDF');
 });
 
 $('#btn-vi-undo-clean').onclick = (e) => busy(e.currentTarget, async () => {

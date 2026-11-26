@@ -55,7 +55,14 @@ def run_phase5_tests() -> None:
             )
             assert pf["ok"] and pf["report"]["paper"] == "compo"
 
-            # 3. GET /api/template/download (static Tier 1 & Tier 2) + POST /api/template (targeted, both explicit and from_md)
+            # 3. GET /api/template/download (static 4-page Full Standard + Tier 1 & Tier 2) + POST /api/template
+            full_bytes = _http_get(base_url + "api/template/download?tier=full")
+            assert full_bytes.startswith(b"%PDF") and len(full_bytes) > 10000
+            import fitz as _fitz_chk
+            with _fitz_chk.open(stream=full_bytes, filetype="pdf") as _fdoc:
+                assert len(_fdoc) == 4, f"Expected 4 pages in standard full sheet, got {len(_fdoc)}"
+            pv_full = json.loads(_http_get(base_url + "api/template/preview?tier=full").decode("utf-8"))
+            assert pv_full["ok"] and pv_full["pages"] == 4
             t1_bytes = _http_get(base_url + "api/template/download?tier=tier1")
             t2_bytes = _http_get(base_url + "api/template/download?tier=tier2")
             assert t1_bytes.startswith(b"%PDF") and len(t1_bytes) > 5000
@@ -178,6 +185,21 @@ def run_phase5_tests() -> None:
                 raise AssertionError("Expected read-only rejection on demo_sample")
             except urllib.error.HTTPError as he:
                 assert he.code == 400
+
+            # Combined refill-only mode on read-only pack without deleting/backing up
+            refill_only = _http_post_json(
+                base_url + "api/pack/cleanup-apply",
+                {
+                    "pack": "demo_sample",
+                    "items": [],
+                    "generate_sheet": True,
+                    "include_anomaly_refill": False,
+                    "include_single_variants": True,
+                    "include_missing_radicals": True,
+                },
+            )
+            assert refill_only["ok"] and refill_only["deleted_count"] == 0 and refill_only["sheet"]
+            assert _http_get(base_url.rstrip("/") + refill_only["sheet"]["pdf_url"]).startswith(b"%PDF")
 
             clone_id = f"_tmp_p5_clone_{port}"
             clone_path = None

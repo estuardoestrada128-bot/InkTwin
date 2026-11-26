@@ -687,57 +687,86 @@ def api_pack_cleanup_plan(st: StudioState, p: dict) -> dict:
     plan["ok"] = True
     plan["editable"] = editable
     plan["missing_radicals"] = [r for r in _CORE_RADICALS if r not in pk.radicals]
+    plan["low_variant_non_cjk"] = [
+        ch
+        for ch, entry in sorted(pk.glyphs.items(), key=lambda kv: _pack_char_sort_key(kv[0], kv[1].get("cat", "")))
+        if len(entry.get("v", [])) == 1 and _pack_char_group(ch, entry.get("cat", "cap")) != "cjk" and not ch.startswith("__")
+    ]
     return plan
 
 
 def api_pack_cleanup_apply(st: StudioState, p: dict) -> dict:
     pk = load_pack(p.get("pack") or None)
-    if not (_is_local_pack(pk.source_path) and pk.source_path.is_file()):
-        raise PermissionError("公开示例字库为只读，请先点击「克隆到本地以编辑」后再执行批量清理。")
-
+    editable = _is_local_pack(pk.source_path) and pk.source_path.is_file()
     plan = build_cleanup_plan(pk)
     req_items = p.get("items")
-    to_delete = req_items if isinstance(req_items, list) else plan["deletions"]
-    if not to_delete and not p.get("force_sheet"):
-        raise ValueError("没有需要清理的异常变体。")
-
-    # Snapshot backup before applying destructive changes so user can undo cleanly
-    bak_path = pack_backup_path(pk.id)
-    bak_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(pk.source_path, bak_path)
-
-    del_by_char: Dict[str, List[int]] = {}
-    for it in to_delete:
-        ch = it.get("char")
-        if ch and ch in pk.glyphs:
-            del_by_char.setdefault(ch, []).append(int(it["vidx"]))
+    to_delete = list(req_items) if isinstance(req_items, list) else list(plan["deletions"])
 
     deleted_count = 0
     emptied_chars: List[str] = []
     affected_single: List[str] = []
-    for ch, idxs in del_by_char.items():
-        vs = pk.glyphs[ch].get("v", [])
-        for vi in sorted(set(idxs), reverse=True):
-            if 0 <= vi < len(vs):
-                vs.pop(vi)
-                deleted_count += 1
-        if not vs:
-            del pk.glyphs[ch]
-            emptied_chars.append(ch)
-        elif len(vs) == 1:
-            affected_single.append(ch)
+    has_backup = editable and pack_backup_path(pk.id).is_file()
 
-    _refresh_and_save_local_pack(pk)
+    if to_delete:
+        if not editable:
+            raise PermissionError("公开示例字库为只读，请先点击「克隆到本地以编辑」后再删除异常变体。")
+        bak_path = pack_backup_path(pk.id)
+        bak_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(pk.source_path, bak_path)
+
+        del_by_char: Dict[str, List[int]] = {}
+        for it in to_delete:
+            ch = it.get("char")
+            if ch and ch in pk.glyphs:
+                del_by_char.setdefault(ch, []).append(int(it["vidx"]))
+
+        for ch, idxs in del_by_char.items():
+            vs = pk.glyphs[ch].get("v", [])
+            for vi in sorted(set(idxs), reverse=True):
+                if 0 <= vi < len(vs):
+                    vs.pop(vi)
+                    deleted_count += 1
+            if not vs:
+                del pk.glyphs[ch]
+                emptied_chars.append(ch)
+            elif len(vs) == 1:
+                affected_single.append(ch)
+
+        _refresh_and_save_local_pack(pk)
+        has_backup = bak_path.is_file()
 
     sheet_info = None
     if bool(p.get("generate_sheet", True)):
-        p3 = list(dict.fromkeys(emptied_chars + [k["char"] for k in plan.get("kept_fallbacks", []) if k["char"] in pk.glyphs or k["char"] in emptied_chars]))
-        p2 = [ch for ch in dict.fromkeys(affected_single) if ch not in p3]
-        chars_ordered = "".join(p3 + p2)
+        inc_anom = bool(p.get("include_anomaly_refill", True))
+        inc_single = bool(p.get("include_single_variants", False))
+        inc_rad = bool(p.get("include_missing_radicals", False))
+
+        p3 = (
+            list(dict.fromkeys(
+                emptied_chars
+                + [k["char"] for k in plan.get("kept_fallbacks", []) if k["char"] in pk.glyphs or k["char"] in emptied_chars]
+            ))
+            if inc_anom else []
+        )
+        p2 = (
+            [ch for ch in dict.fromkeys(affected_single) if ch not in p3]
+            if inc_anom else []
+        )
+        seen_all = set(p3 + p2)
+        extra_single: List[str] = []
+        if inc_single:
+            for ch, entry in sorted(pk.glyphs.items(), key=lambda kv: _pack_char_sort_key(kv[0], kv[1].get("cat", ""))):
+                if ch in seen_all or ch.startswith("__"):
+                    continue
+                if _pack_char_group(ch, entry.get("cat", "cap")) != "cjk" and len(entry.get("v", [])) == 1:
+                    seen_all.add(ch)
+                    extra_single.append(ch)
+
+        chars_ordered = "".join(p3 + p2 + extra_single)
         char_copies = {ch: 3 for ch in p3}
-        for ch in p2:
+        for ch in p2 + extra_single:
             char_copies[ch] = 2
-        rads = ([r for r in _CORE_RADICALS if r not in pk.radicals] if bool(p.get("include_missing_radicals", False)) else None)
+        rads = ([r for r in _CORE_RADICALS if r not in pk.radicals] if inc_rad else None)
         if chars_ordered or rads:
             out = st.workdir / f"refill_{st.next_id()}.pdf"
             res = generate_template_pdf(out, tier="targeted", chars=(chars_ordered or None), char_copies=char_copies, radicals=rads)
@@ -747,15 +776,19 @@ def api_pack_cleanup_apply(st: StudioState, p: dict) -> dict:
                 "previews": _pdf_vector_previews(st, out, "refill", max_pages=8),
                 "priority3_count": len(p3),
                 "priority2_count": len(p2),
+                "single_count": len(extra_single),
                 "radicals_count": len(rads or []),
             }
+
+    if not deleted_count and not sheet_info:
+        raise ValueError("没有需要清理的异常变体，也没有勾选任何补写内容。")
 
     return {
         "ok": True,
         "pack": pk.id,
         "deleted_count": deleted_count,
         "kept_fallbacks": len(plan.get("kept_fallbacks", [])),
-        "has_backup": bak_path.is_file(),
+        "has_backup": has_backup,
         "total_chars": len(pk.glyphs),
         "total_variants": pk.variant_count,
         "sheet": sheet_info,
@@ -881,7 +914,11 @@ def start_studio_server(
                             self._json({"ok": True, "changed": False})
                             return
                         if sig != cur.get("edits_sig"):
-                            export_scene(cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
+                            export_scene(
+                                cur["scene"], out_pdf=cur["pdf"], fmt="pdf", dpi=300,
+                                pen_type=cur["pen"], seed=cur.get("seed", 42),
+                                nib_mm=float(cur.get("nib", 0.5)), ink_override=cur.get("ink", "black"),
+                            )
                         snap = _snapshot(st)
                         snap["changed"] = True
                         self._json(snap)
@@ -892,11 +929,12 @@ def start_studio_server(
                 from urllib.parse import parse_qs, urlparse
 
                 qs = parse_qs(urlparse(self.path).query)
-                tier = (qs.get("tier") or ["tier1"])[0].lower()
-                if tier not in ("tier1", "tier2"):
+                tier = (qs.get("tier") or ["full"])[0].lower()
+                fname_map = {"full": "InkTwin-Standard.pdf", "tier1": "InkTwin-Tier1.pdf", "tier2": "InkTwin-Tier2.pdf"}
+                if tier not in fname_map:
                     self._json({"ok": False, "error": f"invalid static tier: {tier}"}, 400)
                     return
-                fname = "InkTwin-Tier1.pdf" if tier == "tier1" else "InkTwin-Tier2.pdf"
+                fname = fname_map[tier]
                 static_pdf = TEMPLATES_DIR / fname
                 with st.lock:
                     try:
@@ -921,11 +959,12 @@ def start_studio_server(
                 from urllib.parse import parse_qs, urlparse
 
                 qs = parse_qs(urlparse(self.path).query)
-                tier = (qs.get("tier") or ["tier1"])[0].lower()
-                if tier not in ("tier1", "tier2"):
+                tier = (qs.get("tier") or ["full"])[0].lower()
+                fname_map = {"full": "InkTwin-Standard.pdf", "tier1": "InkTwin-Tier1.pdf", "tier2": "InkTwin-Tier2.pdf"}
+                if tier not in fname_map:
                     self._json({"ok": False, "error": f"invalid static tier: {tier}"}, 400)
                     return
-                fname = "InkTwin-Tier1.pdf" if tier == "tier1" else "InkTwin-Tier2.pdf"
+                fname = fname_map[tier]
                 static_pdf = TEMPLATES_DIR / fname
                 with st.lock:
                     try:
@@ -935,7 +974,7 @@ def start_studio_server(
                             src_pdf = st.workdir / fname
                             if not src_pdf.is_file():
                                 generate_template_pdf(src_pdf, tier=tier)
-                        previews = _pdf_vector_previews(st, src_pdf, f"static_{tier}", max_pages=5)
+                        previews = _pdf_vector_previews(st, src_pdf, f"static_{tier}", max_pages=6)
                     except Exception as exc:
                         self._json({"ok": False, "error": str(exc)}, 500)
                         return
