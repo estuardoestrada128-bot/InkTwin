@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import zlib
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -324,14 +326,79 @@ def _draw_fiducials(page: fitz.Page) -> None:
         page.draw_rect(rect, color=COLOR_FIDUCIAL, fill=COLOR_FIDUCIAL, width=0.4)
 
 
+_FALLBACK_ASCII_LABELS: Dict[str, str] = {
+    "ϕ": "phi*",
+    "ℂ": "C*",
+    "ℏ": "hbar",
+    "ℕ": "N*",
+    "ℚ": "Q*",
+    "ℝ": "R*",
+    "ℤ": "Z*",
+    "∆": "dlt",
+    "∖": "\\",
+    "∘": "o",
+    "≃": "~=",
+    "≢": "!==",
+    "⌈": "lc",
+    "⌉": "rc",
+    "⌊": "lf",
+    "⌋": "rf",
+    "⟨": "<|",
+    "⟩": "|>",
+}
+
+
+@lru_cache(maxsize=1)
+def _get_label_fonts() -> Tuple[fitz.Font, fitz.Font, List[fitz.Font]]:
+    """Return cached (ascii_font, cjk_font, extra_math_symbol_fonts) for clean template labels."""
+    f_ascii = fitz.Font("helv")
+    f_cjk = fitz.Font("china-ss")
+    extras: List[fitz.Font] = []
+    cands: List[Path] = []
+    win_root = os.environ.get("WINDIR")
+    if win_root:
+        wf = Path(win_root) / "Fonts"
+        cands.extend([wf / "seguisym.ttf", wf / "cambria.ttc", wf / "msyh.ttc"])
+    cands.extend(
+        [
+            Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
+            Path("/System/Library/Fonts/STIXTwoMath.otf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/opentype/stix/STIXTwoMath-Regular.otf"),
+        ]
+    )
+    for fp in cands:
+        try:
+            if fp.is_file():
+                extras.append(fitz.Font(fontfile=str(fp)))
+        except Exception:
+            pass
+    return f_ascii, f_cjk, extras
+
+
+def _resolve_char_font(ch: str) -> Tuple[str, fitz.Font]:
+    f_ascii, f_cjk, extras = _get_label_fonts()
+    cp = ord(ch)
+    if ch.isascii() and f_ascii.has_glyph(cp):
+        return ch, f_ascii
+    if f_cjk.has_glyph(cp):
+        return ch, f_cjk
+    for fx in extras:
+        if fx.has_glyph(cp):
+            return ch, fx
+    if f_ascii.has_glyph(cp):
+        return ch, f_ascii
+    alt = _FALLBACK_ASCII_LABELS.get(ch, ch)
+    return alt, f_ascii
+
+
 def _draw_prompt_label(page: fitz.Page, cell: CellSpec) -> None:
     x, y, w, h = cell.box_mm
     box_rect = fitz.Rect(x * MM_TO_PT, y * MM_TO_PT, (x + w) * MM_TO_PT, (y + h) * MM_TO_PT)
     page.draw_rect(box_rect, color=COLOR_BOX, fill=None, width=0.55)
 
-    # Subtle baseline & center guide cross inside writing cell
+    # Subtle baseline & center guide cross inside writing cell (clean interior, no ghost character)
     mid_x = (x + w * 0.5) * MM_TO_PT
-    mid_y = (y + h * 0.5) * MM_TO_PT
     base_y = (y + h * 0.78) * MM_TO_PT
     page.draw_line(
         fitz.Point(x * MM_TO_PT + 2, base_y),
@@ -348,28 +415,27 @@ def _draw_prompt_label(page: fitz.Page, cell: CellSpec) -> None:
         dashes="[2 2]",
     )
 
-    # Top tiny prompt label (blue-gray, filtered by color during harvest)
+    # Centered prompt label directly above the cell top edge (with full Unicode Math/Symbol fallback)
     lbl = cell.prompt if len(cell.prompt) <= 4 else cell.prompt[:4]
-    fontname = "china-ss" if any(ord(c) > 127 for c in lbl) else "helv"
-    lbl_pt = fitz.Point(x * MM_TO_PT + 0.6, (y - 0.85) * MM_TO_PT)
-    try:
-        page.insert_text(lbl_pt, lbl, fontsize=6.4, fontname=fontname, color=COLOR_LABEL)
-    except Exception:
-        page.insert_text(lbl_pt, cell.key[:4], fontsize=6.0, fontname="helv", color=COLOR_LABEL)
+    fs = 7.4
+    runs: List[Tuple[str, fitz.Font, float]] = []
+    total_w = 0.0
+    for raw_ch in lbl:
+        disp, fnt = _resolve_char_font(raw_ch)
+        if not disp:
+            continue
+        cw = float(fnt.text_length(disp, fontsize=fs))
+        runs.append((disp, fnt, cw))
+        total_w += cw
 
-    # Faint ghost guide watermark inside cell
-    ghost_txt = cell.key if (cell.kind == "glyph" and not cell.key.startswith("__")) else (
-        "—" if cell.key.startswith("__FRAC") else ("√" if cell.key == "__SQRT_HOOK__" else (
-            "ˉ" if cell.key == "__OVERLINE__" else (cell.key if cell.kind == "radical" else "")
-        ))
-    )
-    if ghost_txt:
-        ghost_rect = fitz.Rect((x + 1.2) * MM_TO_PT, (y + 1.8) * MM_TO_PT, (x + w - 1.2) * MM_TO_PT, (y + h - 1.2) * MM_TO_PT)
-        gfont = "china-ss" if any(ord(c) > 127 for c in ghost_txt) else "helv"
-        try:
-            page.insert_textbox(ghost_rect, ghost_txt, fontsize=17.5, fontname=gfont, color=COLOR_GHOST, align=fitz.TEXT_ALIGN_CENTER)
-        except Exception:
-            pass
+    if runs:
+        cur_x = (x + w * 0.5) * MM_TO_PT - total_w * 0.5
+        lbl_y = (y - 0.95) * MM_TO_PT
+        tw = fitz.TextWriter(page.rect)
+        for disp, fnt, cw in runs:
+            tw.append(fitz.Point(cur_x, lbl_y), disp, font=fnt, fontsize=fs)
+            cur_x += cw
+        tw.write_text(page, color=COLOR_LABEL)
 
 
 def generate_template_pdf(
@@ -428,8 +494,12 @@ def generate_template_pdf(
         }
     )
 
+    try:
+        doc.subset_fonts()
+    except Exception:
+        pass
     out_pdf.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(str(out_pdf), deflate=True)
+    doc.save(str(out_pdf), deflate=True, garbage=3)
     doc.close()
 
     return {

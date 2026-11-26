@@ -166,7 +166,25 @@ def run_phase3_tests() -> None:
         assert cli_main(["fontbuild", "--pack", str(demo_pack_path), "--format", "ttf", "-o", str(cli_font), "--json"]) == 0
         assert cli_font.exists()
 
-        # 6. Auto-augment single-variant glyphs into 3-variant calt alternates (opt-out via augment_variants=False)
+        # 6. Standard 4-page sheet clean-interior & centered non-blank labels check
+        std_pdf = tmp / "std_full.pdf"
+        r_std = generate_template_pdf(std_pdf, tier="full")
+        assert r_std["pages"] == 4 and r_std["cells"] == 570
+        std_spec = read_template_spec_from_pdf(std_pdf)
+        with fitz.open(str(std_pdf)) as sdoc:
+            assert len(sdoc) == 4
+            for cell in std_spec["cells"]:
+                bx, by, bw, bh = cell["box_mm"]
+                p_mm = 25.4 / 72.0
+                # Label sits cleanly above box_mm[1] and must not be empty; box interior must have zero ghost chars
+                pg = sdoc[int(cell["page"])]
+                above = fitz.Rect((bx - 2.0) / p_mm, (by - 4.5) / p_mm, (bx + bw + 2.0) / p_mm, (by + 0.5) / p_mm)
+                lbl_txt = pg.get_text("text", clip=above).strip()
+                assert lbl_txt, f"Blank cell label for {cell['prompt']} at page {cell['page']} ({bx}, {by})"
+                inside = fitz.Rect((bx + 1.0) / p_mm, (by + 1.0) / p_mm, (bx + bw - 1.0) / p_mm, (by + bh - 1.0) / p_mm)
+                assert pg.get_text("text", clip=inside).strip() == "", f"Unexpected ghost text inside cell {cell['prompt']}"
+
+        # 7. Auto-augment single-variant glyphs into 3-variant calt alternates (opt-out via augment_variants=False)
         demo_pk = load_pack(demo_pack_path)
         a_entry = demo_pk.glyphs["A"]
         single_pk = replace(
