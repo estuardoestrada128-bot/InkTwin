@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 import fitz
 
 from .inspector import build_rigid_groups
-from .schema import load_inkscene, resolve_scene_state
+from .schema import PEN_COLOR_PRESETS, load_inkscene, resolve_pen_color, resolve_scene_state
 
 
 def _paper_svg_background(paper: dict, w_mm: float, h_mm: float) -> List[str]:
@@ -65,11 +65,21 @@ def _paper_svg_background(paper: dict, w_mm: float, h_mm: float) -> List[str]:
     return elems
 
 
-def render_page_svg(page_idx: int, resolved: dict, transparent: bool = False) -> str:
+def render_page_svg(
+    page_idx: int,
+    resolved: dict,
+    transparent: bool = False,
+    ink_override: Optional[str] = None,
+) -> str:
     """Render one InkScene page into standalone physical-mm SVG."""
     paper = resolved.get("paper") or {}
     w_mm = float(paper.get("width_mm") or 210.0)
     h_mm = float(paper.get("height_mm") or 297.0)
+
+    ov_hex = resolve_pen_color(ink_override) if ink_override else None
+    base_ink = resolve_pen_color(str(resolved.get("ink") or "black")) or "#111318"
+    std_inks = {PEN_COLOR_PRESETS[k].lower() for k in ("black", "blue", "darkblue", "pencil") if k in PEN_COLOR_PRESETS}
+    std_inks.add(base_ink.lower())
 
     parts: List[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w_mm:.2f}mm" height="{h_mm:.2f}mm" viewBox="0 0 {w_mm:.2f} {h_mm:.2f}">'
@@ -97,7 +107,9 @@ def render_page_svg(page_idx: int, resolved: dict, transparent: bool = False) ->
         x = float(g["x"])
         y = float(g["y"])
         rot = float(g.get("rot", 0.0))
-        color = html.escape(str(g.get("color") or "#111318"), quote=True)
+        raw_color = str(g.get("color") or base_ink)
+        eff_color = ov_hex if (ov_hex and raw_color.lower() in std_inks) else raw_color
+        color = html.escape(eff_color, quote=True)
         gid = html.escape(str(g.get("id", "")), quote=True)
         line_id = html.escape(str(g.get("line", "")), quote=True)
         ch_attr = html.escape(str(g.get("ch", "")), quote=True)
@@ -121,8 +133,11 @@ def render_page_svg(page_idx: int, resolved: dict, transparent: bool = False) ->
             is_fill = bool(p.get("fill", True))
             raw_sw = max(0.03, float(p.get("sw", 0.04 if is_fill else 0.74)) + sw_add)
             sw_vb = (raw_sw * px_to_mm) / scale_avg
-            fill_attr = color if is_fill else "none"
-            p_col = html.escape(str(p.get("color") or color), quote=True)
+            p_raw = p.get("color")
+            p_col = html.escape(
+                (ov_hex if (ov_hex and str(p_raw).lower() in std_inks) else str(p_raw)) if p_raw else eff_color,
+                quote=True,
+            )
             p_fill = p_col if is_fill else "none"
             parts.append(
                 f'<path d="{d}" fill="{p_fill}" stroke="{p_col}" stroke-width="{sw_vb:.3f}" stroke-linecap="round" stroke-linejoin="round"/>'
@@ -142,6 +157,8 @@ def export_scene(
     transparent: bool = False,
     pen_type: str = "gel",
     seed: int = 42,
+    nib_mm: float = 0.5,
+    ink_override: Optional[str] = None,
 ) -> dict:
     """Re-render an InkScene (applying edits.json) to vector PDF, SVG, or pen-textured PNG/PDF."""
     t0 = time.perf_counter()
@@ -151,7 +168,8 @@ def export_scene(
     bg_pdf_raw = resolved.get("background_pdf")
     bg_pdf = Path(bg_pdf_raw) if (bg_pdf_raw and not transparent and Path(bg_pdf_raw).exists()) else None
 
-    if pen_type != "gel" and fmt in ("pdf", "png"):
+    use_pen_raster = (pen_type != "gel" or abs(float(nib_mm or 0.5) - 0.5) > 0.02) and fmt in ("pdf", "png")
+    if use_pen_raster:
         from ..pen.physics import render_scene_with_pen
         target_pdf = (out_pdf or (scene_dir / "edited.pdf")).resolve() if (out_pdf is not None or fmt == "pdf") else None
         written = render_scene_with_pen(
@@ -164,6 +182,8 @@ def export_scene(
             transparent=transparent,
             seed=seed,
             base_pdf=bg_pdf,
+            nib_mm=float(nib_mm or 0.5),
+            ink_override=ink_override,
         )
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 1)
         return {
@@ -173,12 +193,16 @@ def export_scene(
             "edits_applied": len(edits),
             "format": fmt,
             "pen_type": pen_type,
+            "nib_mm": float(nib_mm or 0.5),
             "transparent": transparent,
             "outputs": written,
             "elapsed_ms": elapsed_ms,
         }
 
-    svgs = [render_page_svg(pi, resolved, transparent=(transparent or bg_pdf is not None)) for pi in range(n_pages)]
+    svgs = [
+        render_page_svg(pi, resolved, transparent=(transparent or bg_pdf is not None), ink_override=ink_override)
+        for pi in range(n_pages)
+    ]
 
     written: List[str] = []
     if fmt in ("svg", "png"):
@@ -203,7 +227,10 @@ def export_scene(
         target_pdf.parent.mkdir(parents=True, exist_ok=True)
         if bg_pdf is not None:
             from ..overlay.pdf_overlay import stamp_scene_onto_pdf
-            stamp_scene_onto_pdf(bg_pdf, resolved, target_pdf, pen_type=pen_type, dpi=dpi, seed=seed)
+            stamp_scene_onto_pdf(
+                bg_pdf, resolved, target_pdf, pen_type=pen_type, dpi=dpi, seed=seed,
+                nib_mm=float(nib_mm or 0.5), ink_override=ink_override,
+            )
         else:
             merged = fitz.open()
             try:

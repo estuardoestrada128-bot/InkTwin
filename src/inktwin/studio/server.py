@@ -12,6 +12,7 @@ import json
 import os
 import random
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -36,6 +37,7 @@ from ..harvest.templates import _CORE_RADICALS
 from ..overlay import detect_pdf_layout
 from ..pack import list_packs, load_pack
 from ..pack.facets import compute_facets
+from ..pack.quality import build_cleanup_plan, inspect_glyph_variants, pack_backup_path, pack_median_thickness
 from ..pack.schema import save_pack_zip
 from ..preflight import run_doctor
 from ..scene import export_scene, inspect_scene, load_inkscene
@@ -153,6 +155,9 @@ class StudioState:
             "scene": str(cur["scene"]),
             "pdf": str(cur["pdf"]),
             "pen": cur.get("pen", "gel"),
+            "ink": cur.get("ink", "black"),
+            "prev_ink": cur.get("prev_ink", "black"),
+            "nib": float(cur.get("nib", 0.5)),
             "seed": cur.get("seed", 42),
         }
         meta_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -174,6 +179,9 @@ class StudioState:
                     "scene": sdir,
                     "pdf": pdf_p,
                     "pen": str(data.get("pen") or "gel"),
+                    "ink": str(data.get("ink") or "black"),
+                    "prev_ink": str(data.get("prev_ink") or "black"),
+                    "nib": float(data.get("nib") or 0.5),
                     "seed": int(data.get("seed") or 42),
                     "render": None,
                 }
@@ -249,6 +257,8 @@ def _snapshot(st: StudioState) -> dict:
         "render": cur.get("render"),
         "pdf_url": st.url_for(cur["pdf"]),
         "pen_type": cur.get("pen", "gel"),
+        "ink": cur.get("ink", "black"),
+        "nib_mm": float(cur.get("nib", 0.5)),
         "seed": cur.get("seed"),
         "grid_lock": bool((scene.get("paper") or {}).get("grid_lock", False)),
         "previews": _pdf_vector_previews(st, cur["pdf"], f"run{cur['run']}"),
@@ -281,6 +291,8 @@ def api_render(st: StudioState, p: dict) -> dict:
     out_pdf = rdir / "output.pdf"
     sdir = rdir / "scene"
     pen = p.get("pen_type") or "gel"
+    ink = p.get("ink") or "black"
+    nib = float(p.get("nib_mm") or 0.5)
     seed = int(p["seed"]) if p.get("seed") not in (None, "") else random.randint(1, 999999)
 
     argv = [
@@ -288,7 +300,7 @@ def api_render(st: StudioState, p: dict) -> dict:
         "--pack", p.get("pack") or "demo_sample",
         "--save-scene", str(sdir), "--json",
         "--paper", p.get("paper") or "auto",
-        "--ink", p.get("ink") or "black",
+        "--ink", ink,
         "--mood", p.get("mood") or "normal",
         "--pen-type", pen,
         "--page-size", p.get("page_size") or "A4",
@@ -316,7 +328,20 @@ def api_render(st: StudioState, p: dict) -> dict:
     rc, res, log = _run_cli(argv)
     if rc != 0 or not out_pdf.exists():
         raise RuntimeError(f"render failed (rc={rc}): {log[-1200:]}")
-    st.current = {"run": rid, "dir": rdir, "scene": sdir, "pdf": out_pdf, "pen": pen, "seed": seed, "render": res}
+    if abs(nib - 0.5) > 0.02:
+        export_scene(sdir, out_pdf=out_pdf, fmt="pdf", dpi=300, pen_type=pen, seed=seed, nib_mm=nib, ink_override=ink)
+    st.current = {
+        "run": rid,
+        "dir": rdir,
+        "scene": sdir,
+        "pdf": out_pdf,
+        "pen": pen,
+        "ink": ink,
+        "prev_ink": ("black" if ink == "pencil" else ink),
+        "nib": nib,
+        "seed": seed,
+        "render": res,
+    }
     st.save_current()
     return _snapshot(st)
 
@@ -361,10 +386,39 @@ def api_scene_ops(st: StudioState, p: dict) -> dict:
     else:
         raise ValueError(f"unknown scene action: {action}")
     save_edits(sdir, new_edits)
+    state_changed = False
     if p.get("pen_type"):
-        cur["pen"] = p["pen_type"]
+        old_pen = cur.get("pen", "gel")
+        new_pen = str(p["pen_type"])
+        cur["pen"] = new_pen
+        state_changed = True
+        if not p.get("ink"):
+            if new_pen == "pencil" and cur.get("ink", "black") != "pencil":
+                cur["prev_ink"] = cur.get("ink", "black")
+                cur["ink"] = "pencil"
+            elif old_pen == "pencil" and new_pen != "pencil" and cur.get("ink") == "pencil":
+                cur["ink"] = cur.get("prev_ink") or "black"
+    if p.get("ink"):
+        new_ink = str(p["ink"])
+        cur["ink"] = new_ink
+        if new_ink != "pencil":
+            cur["prev_ink"] = new_ink
+        state_changed = True
+    if p.get("nib_mm") is not None:
+        cur["nib"] = float(p["nib_mm"])
+        state_changed = True
+    if state_changed:
         st.save_current()
-    export_scene(sdir, out_pdf=cur["pdf"], fmt="pdf", dpi=300, pen_type=cur["pen"], seed=cur.get("seed", 42))
+    export_scene(
+        sdir,
+        out_pdf=cur["pdf"],
+        fmt="pdf",
+        dpi=300,
+        pen_type=cur.get("pen", "gel"),
+        seed=cur.get("seed", 42),
+        nib_mm=float(cur.get("nib", 0.5)),
+        ink_override=cur.get("ink", "black"),
+    )
     snap = _snapshot(st)
     snap["added"] = added_count
     return snap
@@ -377,14 +431,21 @@ def api_scene_export(st: StudioState, p: dict) -> dict:
     fmt = p.get("format", "pdf")
     transparent = bool(p.get("transparent", fmt != "pdf"))
     eid = st.next_id()
+    pen_t = cur.get("pen", "gel")
+    nib_v = float(cur.get("nib", 0.5))
+    ink_v = cur.get("ink", "black")
     if fmt == "pdf":
         target = cur["dir"] / f"export_{eid}.pdf"
-        res = export_scene(cur["scene"], out_pdf=target, fmt="pdf", dpi=300, pen_type=cur["pen"], transparent=transparent, seed=cur.get("seed", 42))
+        res = export_scene(
+            cur["scene"], out_pdf=target, fmt="pdf", dpi=300, pen_type=pen_t,
+            transparent=transparent, seed=cur.get("seed", 42), nib_mm=nib_v, ink_override=ink_v,
+        )
     else:
         target_dir = cur["dir"] / f"export_{eid}_{fmt}"
         res = export_scene(
             cur["scene"], out_dir=target_dir, fmt=fmt, dpi=int(p.get("dpi", 300)),
-            transparent=transparent, pen_type=(cur["pen"] if fmt == "png" else "gel"), seed=cur.get("seed", 42),
+            transparent=transparent, pen_type=(pen_t if fmt == "png" else "gel"),
+            seed=cur.get("seed", 42), nib_mm=(nib_v if fmt == "png" else 0.5), ink_override=ink_v,
         )
     return {"ok": True, "format": fmt, "files": [st.url_for(Path(f)) for f in res.get("outputs", [])]}
 
@@ -417,13 +478,18 @@ def api_template(st: StudioState, p: dict) -> dict:
     tier = p.get("tier") or "tier1"
     out = st.workdir / f"template_{st.next_id()}_{tier}.pdf"
     chars = p.get("chars") or None
-    if tier == "targeted" and not chars and p.get("markdown"):
+    radicals = p.get("radicals") or None
+    char_copies = p.get("char_copies") or None
+    if tier == "targeted" and not chars and not radicals and p.get("markdown"):
         md = out.with_suffix(".md")
         md.write_text(p["markdown"], encoding="utf-8")
-        res = generate_template_pdf(out, tier=tier, from_md=md, pack=load_pack(p.get("pack") or None))
+        res = generate_template_pdf(
+            out, tier=tier, from_md=md, pack=load_pack(p.get("pack") or None),
+            char_copies=char_copies, radicals=radicals,
+        )
     else:
-        res = generate_template_pdf(out, tier=tier, chars=chars)
-    return {"ok": True, "result": res, "pdf_url": st.url_for(out), "previews": _pdf_vector_previews(st, out, f"tpl_{tier}", max_pages=5)}
+        res = generate_template_pdf(out, tier=tier, chars=chars, char_copies=char_copies, radicals=radicals)
+    return {"ok": True, "result": res, "pdf_url": st.url_for(out), "previews": _pdf_vector_previews(st, out, f"tpl_{tier}", max_pages=8)}
 
 
 def api_harvest(st: StudioState, p: dict) -> dict:
@@ -489,17 +555,7 @@ def _pack_char_sort_key(ch: str, cat: str) -> Tuple[int, str]:
 def api_pack_inspect(st: StudioState, p: dict) -> dict:
     pk = load_pack(p.get("pack") or None)
     editable = _is_local_pack(pk.source_path) and pk.source_path.is_file()
-
-    # Compute pack-level median thickness for outlier detection (skip bars/dots/punct)
-    all_ts: List[float] = []
-    for entry in pk.glyphs.values():
-        cat = entry.get("cat", "")
-        if cat in ("frac_bar", "accent_bar", "dot", "punct"):
-            continue
-        for v in entry.get("v", []):
-            if isinstance(v, dict) and isinstance(v.get("t"), (int, float)) and float(v["t"]) > 0:
-                all_ts.append(float(v["t"]))
-    med_t = float(np.median(all_ts)) if all_ts else 4.8
+    med_t = pack_median_thickness(pk.glyphs)
 
     items: List[dict] = []
     single_variant_chars = 0
@@ -511,48 +567,8 @@ def api_pack_inspect(st: StudioState, p: dict) -> dict:
         entry = pk.glyphs[ch]
         cat = entry.get("cat", "cap")
         group = _pack_char_group(ch, cat)
-        raw_vs = [v for v in entry.get("v", []) if isinstance(v, dict)]
-
-        asps = [
-            float(v["w"]) / float(v["h"])
-            for v in raw_vs
-            if float(v.get("h") or 0) > 0 and float(v.get("w") or 0) > 0
-        ]
-        char_med_asp = float(np.median(asps)) if len(asps) >= 2 else 0.0
-
-        v_out: List[dict] = []
-        char_has_flag = False
-        for idx, v in enumerate(raw_vs):
-            w = float(v.get("w") or 70.0)
-            h = float(v.get("h") or 100.0)
-            t = float(v.get("t") or 0.0)
-            d = str(v.get("d") or "")
-            flags: List[str] = []
-            if len(d.strip()) < 12:
-                flags.append("残缺")
-            if cat not in ("frac_bar", "accent_bar", "dot", "punct"):
-                if t > max(med_t * 1.55, 9.2):
-                    flags.append("过粗")
-                elif 0.0 < t < min(med_t * 0.52, 2.1):
-                    flags.append("过细")
-            if char_med_asp > 0.0 and w > 0.0 and h > 0.0:
-                ratio = (w / h) / char_med_asp
-                if ratio > 1.75 or ratio < 0.57:
-                    flags.append("比例偏离")
-            if flags:
-                flagged_variants += 1
-                char_has_flag = True
-            v_out.append(
-                {
-                    "vidx": idx,
-                    "w": round(w, 1),
-                    "h": round(h, 1),
-                    "t": round(t, 2),
-                    "fill": bool(v.get("fill", True)),
-                    "d": d,
-                    "flags": flags,
-                }
-            )
+        v_out, char_has_flag = inspect_glyph_variants(ch, entry, med_t)
+        flagged_variants += sum(1 for v in v_out if v["flags"])
         if char_has_flag:
             flagged_chars += 1
         if len(v_out) == 1:
@@ -563,12 +579,14 @@ def api_pack_inspect(st: StudioState, p: dict) -> dict:
 
     missing_radicals = [r for r in _CORE_RADICALS if r not in pk.radicals]
     strokes_counts = {k: len(pk.strokes.get(k, [])) for k in ("H", "V", "P", "N", "D")}
+    has_backup = editable and pack_backup_path(pk.id).is_file()
     return {
         "ok": True,
         "pack": {
             "id": pk.id,
             "scope": "local" if editable else "public",
             "editable": editable,
+            "has_backup": has_backup,
             "path": str(pk.source_path),
             "total_chars": len(pk.glyphs),
             "total_variants": pk.variant_count,
@@ -644,6 +662,126 @@ def api_pack_clone_local(st: StudioState, p: dict) -> dict:
     return {"ok": True, "id": new_id, "path": str(out_path)}
 
 
+def _refresh_and_save_local_pack(pk) -> None:
+    manifest = dict(pk.manifest)
+    manifest["total_chars"] = len(pk.glyphs)
+    manifest["total_variants"] = pk.variant_count
+    manifest["facets"] = compute_facets(pk.glyphs, pk.style_model)
+    manifest["stats"] = {
+        "total_chars": len(pk.glyphs),
+        "real_cjk_chars": pk.real_cjk_count,
+        "variants": pk.variant_count,
+        "radicals": len(pk.radicals),
+        "strokes": sum(len(v) for v in pk.strokes.values()),
+    }
+    manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+    tmp_path = pk.source_path.with_suffix(".hwpack.tmp")
+    save_pack_zip(tmp_path, manifest, pk.glyphs, pk.style_model, pk.radicals, pk.strokes)
+    tmp_path.replace(pk.source_path)
+
+
+def api_pack_cleanup_plan(st: StudioState, p: dict) -> dict:
+    pk = load_pack(p.get("pack") or None)
+    editable = _is_local_pack(pk.source_path) and pk.source_path.is_file()
+    plan = build_cleanup_plan(pk)
+    plan["ok"] = True
+    plan["editable"] = editable
+    plan["missing_radicals"] = [r for r in _CORE_RADICALS if r not in pk.radicals]
+    return plan
+
+
+def api_pack_cleanup_apply(st: StudioState, p: dict) -> dict:
+    pk = load_pack(p.get("pack") or None)
+    if not (_is_local_pack(pk.source_path) and pk.source_path.is_file()):
+        raise PermissionError("公开示例字库为只读，请先点击「克隆到本地以编辑」后再执行批量清理。")
+
+    plan = build_cleanup_plan(pk)
+    req_items = p.get("items")
+    to_delete = req_items if isinstance(req_items, list) else plan["deletions"]
+    if not to_delete and not p.get("force_sheet"):
+        raise ValueError("没有需要清理的异常变体。")
+
+    # Snapshot backup before applying destructive changes so user can undo cleanly
+    bak_path = pack_backup_path(pk.id)
+    bak_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(pk.source_path, bak_path)
+
+    del_by_char: Dict[str, List[int]] = {}
+    for it in to_delete:
+        ch = it.get("char")
+        if ch and ch in pk.glyphs:
+            del_by_char.setdefault(ch, []).append(int(it["vidx"]))
+
+    deleted_count = 0
+    emptied_chars: List[str] = []
+    affected_single: List[str] = []
+    for ch, idxs in del_by_char.items():
+        vs = pk.glyphs[ch].get("v", [])
+        for vi in sorted(set(idxs), reverse=True):
+            if 0 <= vi < len(vs):
+                vs.pop(vi)
+                deleted_count += 1
+        if not vs:
+            del pk.glyphs[ch]
+            emptied_chars.append(ch)
+        elif len(vs) == 1:
+            affected_single.append(ch)
+
+    _refresh_and_save_local_pack(pk)
+
+    sheet_info = None
+    if bool(p.get("generate_sheet", True)):
+        p3 = list(dict.fromkeys(emptied_chars + [k["char"] for k in plan.get("kept_fallbacks", []) if k["char"] in pk.glyphs or k["char"] in emptied_chars]))
+        p2 = [ch for ch in dict.fromkeys(affected_single) if ch not in p3]
+        chars_ordered = "".join(p3 + p2)
+        char_copies = {ch: 3 for ch in p3}
+        for ch in p2:
+            char_copies[ch] = 2
+        rads = ([r for r in _CORE_RADICALS if r not in pk.radicals] if bool(p.get("include_missing_radicals", False)) else None)
+        if chars_ordered or rads:
+            out = st.workdir / f"refill_{st.next_id()}.pdf"
+            res = generate_template_pdf(out, tier="targeted", chars=(chars_ordered or None), char_copies=char_copies, radicals=rads)
+            sheet_info = {
+                "result": res,
+                "pdf_url": st.url_for(out),
+                "previews": _pdf_vector_previews(st, out, "refill", max_pages=8),
+                "priority3_count": len(p3),
+                "priority2_count": len(p2),
+                "radicals_count": len(rads or []),
+            }
+
+    return {
+        "ok": True,
+        "pack": pk.id,
+        "deleted_count": deleted_count,
+        "kept_fallbacks": len(plan.get("kept_fallbacks", [])),
+        "has_backup": bak_path.is_file(),
+        "total_chars": len(pk.glyphs),
+        "total_variants": pk.variant_count,
+        "sheet": sheet_info,
+    }
+
+
+def api_pack_restore_backup(st: StudioState, p: dict) -> dict:
+    pk = load_pack(p.get("pack") or None)
+    if not (_is_local_pack(pk.source_path) and pk.source_path.is_file()):
+        raise PermissionError("只能还原本地字库备份。")
+    bak = pack_backup_path(pk.id)
+    if not bak.is_file():
+        raise FileNotFoundError("未找到可还原的清理备份。")
+    tmp_path = pk.source_path.with_suffix(".hwpack.tmp")
+    shutil.copy2(bak, tmp_path)
+    tmp_path.replace(pk.source_path)
+    bak.unlink(missing_ok=True)
+    restored = load_pack(pk.id)
+    return {
+        "ok": True,
+        "pack": restored.id,
+        "total_chars": len(restored.glyphs),
+        "total_variants": restored.variant_count,
+    }
+
+
 ROUTES_POST: Dict[str, Callable[[StudioState, dict], dict]] = {
     "/api/preflight": api_preflight,
     "/api/render": api_render,
@@ -657,6 +795,9 @@ ROUTES_POST: Dict[str, Callable[[StudioState, dict], dict]] = {
     "/api/pack/inspect": api_pack_inspect,
     "/api/pack/delete-variant": api_pack_delete_variant,
     "/api/pack/clone-local": api_pack_clone_local,
+    "/api/pack/cleanup-plan": api_pack_cleanup_plan,
+    "/api/pack/cleanup-apply": api_pack_cleanup_apply,
+    "/api/pack/restore-backup": api_pack_restore_backup,
 }
 
 

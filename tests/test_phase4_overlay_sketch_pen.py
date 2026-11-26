@@ -162,6 +162,10 @@ def run_phase4_tests() -> None:
     assert float(ball[115:150, 45:275, 3].std()) > float(gel_1[115:150, 45:275, 3].std())
     assert int((fount[:, :, 3] > 5).sum()) > int((stroke_rgba[:, :, 3] > 5).sum()), "Fountain should exhibit micro-bleed halo"
 
+    nib_thin = apply_pen_physics_to_rgba(stroke_rgba, pen_type="gel", dpi=300, seed=77, nib_mm=0.38)
+    nib_thick = apply_pen_physics_to_rgba(stroke_rgba, pen_type="gel", dpi=300, seed=77, nib_mm=0.7)
+    assert int(nib_thin[:, :, 3].sum()) < int(gel_1[:, :, 3].sum()) < int(nib_thick[:, :, 3].sum()), "Nib mm must thin/thicken stroke cleanly"
+
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         exam_pdf = create_sample_blank_exam_pdf(tmp / "blank_exam.pdf")

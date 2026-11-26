@@ -12,6 +12,7 @@ import fitz
 import numpy as np
 
 from ..pack.facets import compute_facets
+from ..pack.quality import pack_median_thickness, variant_anomaly_flags
 from ..pack.schema import HwPack, load_pack, save_pack_zip
 from .calibrator import (
     calibrate_radical_item,
@@ -259,11 +260,27 @@ def harvest_template_pdf(
 
     # Load base pack if merging, else initialize clean empty pack
     base_pack: Optional[HwPack] = None
+    old_flagged_idx: Dict[str, set] = {}
+    old_counts: Dict[str, int] = {}
     if merge_into is not None:
         base_pack = load_pack(str(merge_into))
-        glyphs = dict(base_pack.glyphs)
-        radicals = dict(base_pack.radicals)
+        glyphs = {k: {"cat": v.get("cat", "cap"), "v": list(v.get("v", []))} for k, v in base_pack.glyphs.items()}
+        radicals = {k: list(v) for k, v in base_pack.radicals.items()}
         strokes = {k: list(v) for k, v in base_pack.strokes.items()}
+        pre_med_t = pack_median_thickness(glyphs)
+        for ch_k, entry in glyphs.items():
+            raw_vs = [v for v in entry.get("v", []) if isinstance(v, dict)]
+            old_counts[ch_k] = len(raw_vs)
+            asps = [
+                float(v["w"]) / float(v["h"])
+                for v in raw_vs
+                if float(v.get("h") or 0) > 0 and float(v.get("w") or 0) > 0
+            ]
+            c_asp = float(np.median(asps)) if len(asps) >= 2 else 0.0
+            cat_k = entry.get("cat", "cap")
+            f_idx = {i for i, v in enumerate(raw_vs) if variant_anomaly_flags(v, cat_k, pre_med_t, c_asp)}
+            if f_idx:
+                old_flagged_idx[ch_k] = f_idx
     else:
         glyphs = {}
         radicals = {}
@@ -279,6 +296,11 @@ def harvest_template_pdf(
     added_strokes = 0
     added_radicals = 0
     filled_cells = 0
+    new_variants_by_char: Dict[str, List[dict]] = defaultdict(list)
+    newly_added_chars: List[str] = []
+    newly_added_chars_seen = set()
+    newly_added_radicals: List[str] = []
+    newly_added_rads_seen = set()
 
     for c in cells:
         polys = cell_polys.get(c["cell_id"])
@@ -301,6 +323,9 @@ def harvest_template_pdf(
             if item:
                 radicals.setdefault(key, []).append(item)
                 added_radicals += 1
+                if key not in newly_added_rads_seen:
+                    newly_added_rads_seen.add(key)
+                    newly_added_radicals.append(key)
         else:
             var = calibrate_variant_polygon(polys, norm_mode=c.get("norm_mode", "height100"), is_fill=True)
             if not var or not var.get("d"):
@@ -313,7 +338,33 @@ def harvest_template_pdf(
                 glyphs[key] = {"cat": c.get("cat", "cap"), "v": []}
                 added_glyphs += 1
             glyphs[key]["v"].append(var)
+            new_variants_by_char[key].append(var)
             added_variants += 1
+            if key not in newly_added_chars_seen:
+                newly_added_chars_seen.add(key)
+                newly_added_chars.append(key)
+
+    replaced_anomalies = 0
+    if old_flagged_idx and new_variants_by_char:
+        post_med_t = pack_median_thickness(glyphs)
+        for ch_k, new_vs in new_variants_by_char.items():
+            f_idx = old_flagged_idx.get(ch_k)
+            if not f_idx or not new_vs:
+                continue
+            all_vs = glyphs[ch_k]["v"]
+            asps = [
+                float(v["w"]) / float(v["h"])
+                for v in all_vs
+                if float(v.get("h") or 0) > 0 and float(v.get("w") or 0) > 0
+            ]
+            c_asp = float(np.median(asps)) if len(asps) >= 2 else 0.0
+            cat_k = glyphs[ch_k].get("cat", "cap")
+            if any(not variant_anomaly_flags(nv, cat_k, post_med_t, c_asp) for nv in new_vs):
+                oc = old_counts.get(ch_k, 0)
+                kept_vs = [v for i, v in enumerate(all_vs) if not (i < oc and i in f_idx)]
+                if kept_vs:
+                    replaced_anomalies += len(all_vs) - len(kept_vs)
+                    glyphs[ch_k]["v"] = kept_vs
 
     style_model = measure_style_dna(glyphs, strokes)
     facets = compute_facets(glyphs, style_model)
@@ -345,6 +396,9 @@ def harvest_template_pdf(
         "added_variants": added_variants,
         "added_strokes": added_strokes,
         "added_radicals": added_radicals,
+        "replaced_anomalies": replaced_anomalies,
+        "newly_added_chars": newly_added_chars,
+        "newly_added_radicals": newly_added_radicals,
         "total_chars": len(glyphs),
         "total_variants": sum(len(v.get("v", [])) for v in glyphs.values()),
         "facets": facets,

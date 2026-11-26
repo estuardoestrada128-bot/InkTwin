@@ -72,6 +72,13 @@ def run_phase5_tests() -> None:
             )
             assert tpl_md["ok"] and tpl_md["result"]["pages"] >= 1
 
+            tpl_rad = _http_post_json(
+                base_url + "api/template",
+                {"tier": "targeted", "chars": "", "radicals": ["亻", "氵"]},
+            )
+            assert tpl_rad["ok"] and tpl_rad["result"]["cells"] == 4
+            assert _http_get(base_url.rstrip("/") + tpl_rad["pdf_url"]).startswith(b"%PDF")
+
             # 4. POST /api/layout-detect on generated blank exam & overlay pen switch preserves background
             blank_pdf = _create_blank_exam(tmp / "blank.pdf")
             blank_b64 = base64.b64encode(blank_pdf.read_bytes()).decode("ascii")
@@ -126,8 +133,12 @@ def run_phase5_tests() -> None:
 
             op_t = _http_post_json(base_url + "api/scene/ops", {"action": "tighten"})
             assert op_t["ok"]
-            op_p = _http_post_json(base_url + "api/scene/ops", {"action": "repen", "pen_type": "pencil"})
-            assert op_p["ok"]
+            op_p = _http_post_json(base_url + "api/scene/ops", {"action": "repen", "pen_type": "fountain", "ink": "blue", "nib_mm": 0.7})
+            assert op_p["ok"] and op_p["pen_type"] == "fountain" and op_p["ink"] == "blue" and abs(op_p["nib_mm"] - 0.7) < 0.01
+            op_pen_sw = _http_post_json(base_url + "api/scene/ops", {"action": "repen", "pen_type": "pencil"})
+            assert op_pen_sw["ok"] and op_pen_sw["ink"] == "pencil"
+            op_pen_bk = _http_post_json(base_url + "api/scene/ops", {"action": "repen", "pen_type": "gel"})
+            assert op_pen_bk["ok"] and op_pen_bk["ink"] == "blue", f"Expected ink restored to blue, got {op_pen_bk.get('ink')}"
 
             ex_svg = _http_post_json(base_url + "api/scene/export", {"format": "svg", "transparent": True})
             assert ex_svg["ok"] and len(ex_svg["files"]) >= 1
@@ -170,6 +181,8 @@ def run_phase5_tests() -> None:
 
             clone_id = f"_tmp_p5_clone_{port}"
             clone_path = None
+            from inktwin.pack import load_pack, pack_backup_path, save_pack_zip
+            bak_path = pack_backup_path(clone_id)
             try:
                 cl = _http_post_json(base_url + "api/pack/clone-local", {"pack": "demo_sample", "new_id": clone_id})
                 assert cl["ok"] and cl["id"] == clone_id
@@ -187,13 +200,61 @@ def run_phase5_tests() -> None:
                 assert del_res["ok"] and del_res["total_variants"] == before_v - 1
                 assert del_res["deleted"]["remaining"] == len(target_item["variants"]) - 1
 
+                # Inject deterministic broken + fallback anomalous variants to verify cleanup plan, refill sheet, restore & harvest auto-replace
+                pk_mut = load_pack(clone_id)
+                pk_mut.glyphs["A"]["v"].append({"w": 70.0, "h": 100.0, "fill": True, "t": 4.8, "d": "M0 0Z"})
+                pk_mut.glyphs["Ψ"] = {"cat": "cap", "v": [{"w": 70.0, "h": 100.0, "fill": True, "t": 14.5, "d": "M10 10 L60 10 L60 90 L10 90 Z"}]}
+                save_pack_zip(clone_path, pk_mut.manifest, pk_mut.glyphs, pk_mut.style_model, pk_mut.radicals, pk_mut.strokes)
+
+                cplan = _http_post_json(base_url + "api/pack/cleanup-plan", {"pack": clone_id})
+                assert cplan["ok"] and any(d["char"] == "A" and "残缺" in d["flags"] for d in cplan["deletions"])
+                assert any(k["char"] == "Ψ" for k in cplan["kept_fallbacks"]), f"Expected sole non-broken anomalous glyph kept as fallback: {cplan}"
+
+                capp = _http_post_json(base_url + "api/pack/cleanup-apply", {"pack": clone_id, "generate_sheet": True, "include_missing_radicals": False})
+                assert capp["ok"] and capp["deleted_count"] >= 1 and capp["has_backup"] is True
+                assert capp["sheet"] and _http_get(base_url.rstrip("/") + capp["sheet"]["pdf_url"]).startswith(b"%PDF")
+                assert bak_path.is_file()
+
+                # Verify restore-backup reverts the cleanup cleanly
+                rst = _http_post_json(base_url + "api/pack/restore-backup", {"pack": clone_id})
+                assert rst["ok"] and not bak_path.is_file()
+
+                # Verify harvest auto-replaces old flagged variant of Ψ when clean stroke is harvested
+                from inktwin.harvest import generate_template_pdf, harvest_template_pdf, read_template_spec_from_pdf
+                t_pdf = tmp / "clean_psi.pdf"
+                generate_template_pdf(t_pdf, tier="targeted", chars="Ψ")
+                tspec = read_template_spec_from_pdf(t_pdf)
+                mm_pt = 72.0 / 25.4
+                with fitz.open(str(t_pdf)) as tdoc:
+                    tpg = tdoc[0]
+                    bx, by, bw, bh = tspec["cells"][0]["box_mm"]
+                    tpg.draw_line(
+                        fitz.Point((bx + bw * 0.5) * mm_pt, (by + bh * 0.2) * mm_pt),
+                        fitz.Point((bx + bw * 0.5) * mm_pt, (by + bh * 0.8) * mm_pt),
+                        color=(0.05, 0.05, 0.08),
+                        width=1.4,
+                    )
+                    tpg.draw_polyline(
+                        [
+                            fitz.Point((bx + bw * 0.25) * mm_pt, (by + bh * 0.3) * mm_pt),
+                            fitz.Point((bx + bw * 0.5) * mm_pt, (by + bh * 0.55) * mm_pt),
+                            fitz.Point((bx + bw * 0.75) * mm_pt, (by + bh * 0.3) * mm_pt),
+                        ],
+                        color=(0.05, 0.05, 0.08),
+                        width=1.4,
+                    )
+                    t_filled = tmp / "clean_psi_filled.pdf"
+                    tdoc.save(str(t_filled))
+                hres = harvest_template_pdf(t_filled, clone_path, pack_id=clone_id, merge_into=clone_path)
+                assert "Ψ" in hres["newly_added_chars"] and hres["replaced_anomalies"] >= 1, f"Expected old thick Ψ replaced: {hres}"
+
                 # Trim one non-exempt single glyph down to 1 variant to test high_freq_single_variants & elastic toggle
                 test_item = next(
                     it for it in insp_loc["items"]
                     if len(it["char"]) == 1 and it["char"].isalpha() and len(it["variants"]) >= 1
                 )
                 test_ch = test_item["char"]
-                rem = len(test_item["variants"]) - (1 if test_item["char"] == target_item["char"] else 0)
+                rem = len(load_pack(clone_id).glyphs[test_ch]["v"])
                 while rem > 1:
                     d2 = _http_post_json(base_url + "api/pack/delete-variant", {"pack": clone_id, "char": test_ch, "vidx": 0})
                     rem = d2["deleted"]["remaining"]
@@ -225,6 +286,8 @@ def run_phase5_tests() -> None:
             finally:
                 if clone_path and clone_path.exists():
                     clone_path.unlink()
+                if bak_path.exists():
+                    bak_path.unlink()
         finally:
             for es in st.editor_servers:
                 es.shutdown()

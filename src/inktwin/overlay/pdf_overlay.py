@@ -267,13 +267,15 @@ def stamp_scene_onto_pdf(
     pen_type: str = "gel",
     dpi: int = 300,
     seed: int = 42,
+    nib_mm: float = 0.5,
+    ink_override: Optional[str] = None,
 ) -> dict:
     """Composite transparent handwritten ink from InkScene cleanly onto base_pdf."""
     base_pdf = Path(base_pdf)
     out_pdf = Path(out_pdf)
     out_pdf.parent.mkdir(parents=True, exist_ok=True)
 
-    if pen_type != "gel":
+    if pen_type != "gel" or abs(float(nib_mm or 0.5) - 0.5) > 0.02:
         from ..pen.physics import render_scene_with_pen
         written = render_scene_with_pen(
             resolved_scene,
@@ -284,13 +286,15 @@ def stamp_scene_onto_pdf(
             transparent=False,
             seed=seed,
             base_pdf=base_pdf,
+            nib_mm=float(nib_mm or 0.5),
+            ink_override=ink_override,
         )
-        return {"ok": True, "pdf": str(out_pdf.resolve()), "pen_type": pen_type, "vector_overlay": False, "outputs": written}
+        return {"ok": True, "pdf": str(out_pdf.resolve()), "pen_type": pen_type, "nib_mm": float(nib_mm or 0.5), "vector_overlay": False, "outputs": written}
 
     with fitz.open(str(base_pdf)) as doc:
         n_pages = len(doc)
         for pno in range(n_pages):
-            svg_str = render_page_svg(pno, resolved_scene, transparent=True)
+            svg_str = render_page_svg(pno, resolved_scene, transparent=True, ink_override=ink_override)
             with fitz.open(stream=svg_str.encode("utf-8"), filetype="svg") as sdoc:
                 ov_pdf_bytes = sdoc.convert_to_pdf()
             with fitz.open("pdf", ov_pdf_bytes) as ov_doc:

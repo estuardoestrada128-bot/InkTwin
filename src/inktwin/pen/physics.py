@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import fitz
 import numpy as np
@@ -28,13 +28,66 @@ def _page_mm_noise(h_px: int, w_px: int, dpi: float, wavelength_mm: float, seed:
     return np.asarray(im, dtype=np.float32) / 255.0
 
 
+def _sheared_diagonal_noise(h_px: int, w_px: int, dpi: float, pitch_mm: float, angle_deg: float, seed: int) -> np.ndarray:
+    """Fast vectorized directional streak noise anchored to millimeter pitch along angle_deg."""
+    base = _page_mm_noise(h_px, w_px, dpi, pitch_mm, seed)
+    # Stretch along shear vector via fast index gather (zero Python loops, avoids PIL rotate cropping artifacts)
+    slope = float(np.tan(np.deg2rad(angle_deg)))
+    yy = np.arange(h_px, dtype=np.float32)[:, None]
+    xx = np.arange(w_px, dtype=np.float32)[None, :]
+    sx = (np.rint(xx + 0.35 * slope * yy).astype(np.int32)) % max(1, w_px)
+    sy = (np.rint(yy * 0.65).astype(np.int32)) % max(1, h_px)
+    return 0.55 * base + 0.45 * base[sy, sx]
+
+
+def _spread_ink_rgb(rgb: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    """Propagate local ink color outward onto nearby semi-transparent pixels so dilation never pulls black(0,0,0)."""
+    pm = rgb * alpha[..., None]
+    w_im = Image.fromarray(np.clip(alpha * 255.0, 0.0, 255.0).astype(np.uint8), mode="L").filter(
+        ImageFilter.GaussianBlur(radius=1.6)
+    )
+    w_arr = np.asarray(w_im, dtype=np.float32) / 255.0
+    chans = []
+    for c in range(3):
+        cim = Image.fromarray(np.clip(pm[:, :, c], 0.0, 255.0).astype(np.uint8), mode="L").filter(
+            ImageFilter.GaussianBlur(radius=1.6)
+        )
+        chans.append(np.asarray(cim, dtype=np.float32))
+    blurred_pm = np.stack(chans, axis=-1)
+    est_rgb = blurred_pm / np.maximum(w_arr[..., None], 1e-4)
+    return np.where((alpha < 0.35)[..., None] & (w_arr > 0.02)[..., None], np.clip(est_rgb, 0.0, 255.0), rgb)
+
+
+def _apply_nib_width(alpha: np.ndarray, rgb: np.ndarray, nib_mm: float, dpi: float) -> Tuple[np.ndarray, np.ndarray]:
+    """Adjust stroke thickness around baseline 0.50 mm tip using crisp morphological edge shaping."""
+    nib = float(nib_mm or 0.5)
+    if abs(nib - 0.5) <= 0.02:
+        return alpha, rgb
+    a_u8 = np.clip(alpha * 255.0, 0.0, 255.0).astype(np.uint8)
+    scale_r = max(1, int(round((dpi / 300.0))))
+    ksize = 3 if scale_r <= 1 else 5
+    if nib < 0.5:
+        eroded = np.asarray(Image.fromarray(a_u8, mode="L").filter(ImageFilter.MinFilter(ksize)), dtype=np.float32) / 255.0
+        strength = min(0.82, max(0.0, (0.5 - nib) / 0.14) * 0.72)
+        # Keep minimum faint spine so 1px hairline accents never vanish completely
+        thinned = np.maximum(eroded, alpha * 0.28)
+        alpha = (1.0 - strength) * alpha + strength * thinned
+        return np.clip(alpha, 0.0, 1.0), rgb
+    spread_rgb = _spread_ink_rgb(rgb, alpha)
+    dilated = np.asarray(Image.fromarray(a_u8, mode="L").filter(ImageFilter.MaxFilter(ksize)), dtype=np.float32) / 255.0
+    strength = min(0.85, max(0.0, (nib - 0.5) / 0.22) * 0.78)
+    alpha = np.maximum(alpha, dilated * strength)
+    return np.clip(alpha, 0.0, 1.0), spread_rgb
+
+
 def apply_pen_physics_to_rgba(
     rgba: np.ndarray,
     pen_type: str = "gel",
     dpi: float = 300,
     seed: int = 42,
+    nib_mm: float = 0.5,
 ) -> np.ndarray:
-    """Apply physical pen ink/paper interaction onto a transparent RGBA stroke bitmap."""
+    """Apply physical pen nib geometry & ink/paper interaction onto a transparent RGBA stroke bitmap."""
     out = rgba.copy()
     pt = (pen_type or "gel").lower()
     if pt not in PEN_TYPES:
@@ -47,39 +100,80 @@ def apply_pen_physics_to_rgba(
 
     alpha = alpha_u8.astype(np.float32) / 255.0
     rgb = out[:, :, :3].astype(np.float32)
+    alpha, rgb = _apply_nib_width(alpha, rgb, nib_mm=nib_mm, dpi=dpi)
 
     if pt == "gel":
         n_gel = _page_mm_noise(h_px, w_px, dpi, 2.5, seed + 5)
-        alpha = alpha * (0.95 + 0.05 * n_gel)
+        alpha = alpha * (0.96 + 0.04 * n_gel)
     elif pt == "ballpoint":
-        # 1.5 mm roller oil-ink concentration waves + 0.20 mm edge roller-skid micro-skipping
-        n_wave = _page_mm_noise(h_px, w_px, dpi, 1.5, seed + 11)
-        n_fine = _page_mm_noise(h_px, w_px, dpi, 0.20, seed + 23)
-        edge_mask = (alpha > 0.0) & (alpha < 0.85)
-        edge_skip = np.where(edge_mask & (n_fine < 0.42), 0.22 + 0.68 * n_fine, 1.0)
-        alpha = alpha * (0.68 + 0.34 * n_wave) * edge_skip
-        rgb = np.clip(rgb * (0.86 + 0.16 * n_wave[..., None]), 0.0, 255.0)
+        # Firm finer core + directional 35-deg oil roller streaks + subtle satin highlight & transition beads
+        rgb = _spread_ink_rgb(rgb, alpha)
+        a_u8_n = np.clip(alpha * 255.0, 0.0, 255.0).astype(np.uint8)
+        eroded = np.asarray(Image.fromarray(a_u8_n, mode="L").filter(ImageFilter.MinFilter(3)), dtype=np.float32) / 255.0
+        alpha = 0.72 * alpha + 0.28 * np.maximum(eroded, alpha * 0.45)
+
+        n_wave = _page_mm_noise(h_px, w_px, dpi, 1.35, seed + 11)
+        n_streak = _sheared_diagonal_noise(h_px, w_px, dpi, 0.24, 35.0, seed + 23)
+        n_fine = _page_mm_noise(h_px, w_px, dpi, 0.16, seed + 31)
+        edge_mask = (alpha > 0.04) & (alpha < 0.88)
+        edge_skip = np.where(edge_mask & (n_fine < 0.44), 0.18 + 0.72 * n_fine, 1.0)
+        mid_groove = np.where((alpha > 0.45) & (n_streak < 0.26), 0.56 + 1.2 * n_streak, 1.0)
+        alpha = alpha * (0.72 + 0.28 * n_wave) * edge_skip * mid_groove
+
+        # Satin sheen along roller center & micro oil bead darkening at corners
+        gy = np.abs(alpha - np.roll(alpha, 1, axis=0))
+        gx = np.abs(alpha - np.roll(alpha, 1, axis=1))
+        corner_pool = np.clip((gx + gy) * 0.45, 0.0, 0.28)
+        sheen = np.where(alpha > 0.55, 10.0 * n_wave, 0.0)[..., None]
+        rgb = np.clip(rgb * (0.86 + 0.14 * n_wave - 0.18 * corner_pool)[..., None] + sheen, 0.0, 255.0)
     elif pt == "fountain":
-        # 0.055 mm capillary fiber micro-bleed + shading/pooling gradient
-        blur_r = max(0.65, 0.055 * float(dpi) / 25.4)
-        a_im = Image.fromarray(alpha_u8, mode="L").filter(ImageFilter.GaussianBlur(radius=blur_r))
-        alpha_blur = np.asarray(a_im, dtype=np.float32) / 255.0
-        n_fib = _page_mm_noise(h_px, w_px, dpi, 0.26, seed + 37)
-        n_pool = _page_mm_noise(h_px, w_px, dpi, 1.0, seed + 53)
-        bleed = alpha_blur * (0.48 + 0.90 * n_fib)
-        alpha = np.maximum(alpha * 0.94, np.clip(bleed * 1.25, 0.0, 1.0))
-        # Ink pooling contrast & fill RGB inside bleed halo from nearest solid ink color
-        rgb_im = Image.fromarray(out[:, :, :3], mode="RGB").filter(ImageFilter.GaussianBlur(radius=blur_r * 1.05))
-        rgb_blur = np.asarray(rgb_im, dtype=np.float32)
-        rgb = np.where((alpha_u8 < 45)[..., None], rgb_blur, rgb * (0.78 + 0.26 * n_pool[..., None]))
+        # Directional oblique nib fullness (downstrokes fuller, cross-strokes crisp) + true shading/pooling + tight paper rim
+        rgb = _spread_ink_rgb(rgb, alpha)
+        down_full = np.maximum(alpha, 0.52 * np.roll(alpha, 1, axis=0))
+        down_full = np.maximum(down_full, 0.34 * np.roll(alpha, 1, axis=1))
+        alpha_nib = 0.68 * alpha + 0.32 * down_full
+
+        # Local ink density map (crossings, turns, stroke caps pool darker)
+        pool_r = max(1.1, 0.28 * float(dpi) / 25.4)
+        a_u8_n = np.clip(alpha_nib * 255.0, 0.0, 255.0).astype(np.uint8)
+        pool_map = np.asarray(Image.fromarray(a_u8_n, mode="L").filter(ImageFilter.GaussianBlur(radius=pool_r)), dtype=np.float32) / 255.0
+        n_pool = _page_mm_noise(h_px, w_px, dpi, 0.95, seed + 53)
+        n_fib = _page_mm_noise(h_px, w_px, dpi, 0.22, seed + 37)
+
+        # Ultra-tight capillary feather strictly at outer rim pixels (avoids blurry glow)
+        rim_r = max(0.55, 0.036 * float(dpi) / 25.4)
+        rim_blur = np.asarray(Image.fromarray(a_u8_n, mode="L").filter(ImageFilter.GaussianBlur(radius=rim_r)), dtype=np.float32) / 255.0
+        capillary_halo = np.clip(rim_blur * (0.28 + 0.55 * n_fib), 0.0, 0.65)
+        alpha = np.maximum(alpha_nib, capillary_halo)
+        # Edge pooling contrast: slightly denser outer meniscal line
+        meniscus = np.clip((pool_map - alpha_nib) * 0.45, 0.0, 0.22)
+        alpha = np.clip(alpha * (0.94 + 0.08 * n_pool) + meniscus * 0.12, 0.0, 1.0)
+
+        # Shading: dense crossings/caps turn deeper; open mid-strokes lift ink hue slightly
+        pool_dark = np.clip(pool_map * (0.85 + 0.30 * n_pool), 0.0, 1.0)
+        shade_mul = (1.14 - 0.44 * pool_dark)[..., None]
+        rgb = np.clip(rgb * shade_mul, 0.0, 255.0)
     elif pt == "pencil":
-        # High-frequency 0.09 mm + 0.24 mm porous paper-tooth graphite texture
-        n_tooth = _page_mm_noise(h_px, w_px, dpi, 0.09, seed + 71)
-        n_grain = _page_mm_noise(h_px, w_px, dpi, 0.24, seed + 89)
-        tooth = 0.62 * n_tooth + 0.38 * n_grain
-        alpha = alpha * np.clip((tooth - 0.14) * 1.42, 0.06, 1.0) * 0.88
-        graphite = np.array([58.0, 62.0, 70.0], dtype=np.float32)
-        rgb = rgb * 0.45 + graphite * 0.55
+        # Softer graphite border + dual-frequency 45-deg directional paper-tooth grain
+        rgb = _spread_ink_rgb(rgb, alpha)
+        a_u8_n = np.clip(alpha * 255.0, 0.0, 255.0).astype(np.uint8)
+        soft_edge = np.asarray(Image.fromarray(a_u8_n, mode="L").filter(ImageFilter.MaxFilter(3)), dtype=np.float32) / 255.0
+        alpha = np.maximum(alpha, soft_edge * 0.18)
+
+        n_tooth = _page_mm_noise(h_px, w_px, dpi, 0.085, seed + 71)
+        n_hatch = _sheared_diagonal_noise(h_px, w_px, dpi, 0.18, 45.0, seed + 83)
+        n_grain = _page_mm_noise(h_px, w_px, dpi, 0.26, seed + 89)
+        tooth = 0.46 * n_tooth + 0.34 * n_hatch + 0.20 * n_grain
+        alpha = alpha * np.clip((tooth - 0.14) * 1.48, 0.05, 1.0) * 0.88
+
+        graphite = np.array([56.0, 60.0, 68.0], dtype=np.float32)
+        # Preserve chromatic hint if user picked blue/red pencil, otherwise clean realistic graphite
+        is_neutral = (np.max(rgb, axis=-1) - np.min(rgb, axis=-1)) < 18.0
+        rgb = np.where(
+            is_neutral[..., None],
+            rgb * 0.35 + graphite * 0.65 + (1.0 - tooth)[..., None] * 18.0,
+            rgb * 0.58 + graphite * 0.42 + (1.0 - tooth)[..., None] * 14.0,
+        )
 
     out[:, :, :3] = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
     out[:, :, 3] = np.clip(alpha * 255.0, 0.0, 255.0).astype(np.uint8)
@@ -96,6 +190,8 @@ def render_scene_with_pen(
     transparent: bool = False,
     seed: int = 42,
     base_pdf: Optional[Path] = None,
+    nib_mm: float = 0.5,
+    ink_override: Optional[str] = None,
 ) -> List[str]:
     """Render InkScene pages with optional physical pen textures to transparent PNG or composited PDF."""
     n_pages = max(1, int(resolved_scene.get("pages_detected", 1)))
@@ -106,13 +202,13 @@ def render_scene_with_pen(
 
     png_bytes_per_page: List[bytes] = []
     for pi in range(n_pages):
-        svg_str = render_page_svg(pi, resolved_scene, transparent=True)
+        svg_str = render_page_svg(pi, resolved_scene, transparent=True, ink_override=ink_override)
         with fitz.open(stream=svg_str.encode("utf-8"), filetype="svg") as sdoc:
             pdf_bytes = sdoc.convert_to_pdf()
         with fitz.open("pdf", pdf_bytes) as pdoc:
             pix = pdoc[0].get_pixmap(dpi=dpi, alpha=True)
             arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, 4)
-            styled = apply_pen_physics_to_rgba(arr, pen_type=pen_type, dpi=dpi, seed=seed + pi * 101)
+            styled = apply_pen_physics_to_rgba(arr, pen_type=pen_type, dpi=dpi, seed=seed + pi * 101, nib_mm=nib_mm)
             buf = io.BytesIO()
             Image.fromarray(styled, mode="RGBA").save(buf, format="PNG")
             png_bytes_per_page.append(buf.getvalue())

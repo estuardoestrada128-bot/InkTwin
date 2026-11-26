@@ -122,6 +122,18 @@
   .vg-var .fl { display: inline-block; font-size: 10px; color: var(--bad); font-weight: 600; margin-top: 1px; }
   .vg-var .vdel { position: absolute; right: 2px; top: 1px; width: 16px; height: 16px; border: 0; border-radius: 999px; background: rgba(198,51,47,.1); color: var(--bad); cursor: pointer; font-size: 12px; line-height: 16px; padding: 0; }
   .vg-var .vdel:hover { background: var(--bad); color: #fff; }
+  .drop-over { border-color: var(--accent) !important; box-shadow: 0 0 0 3px rgba(47,91,211,.16); background: #f8faff !important; }
+  .snip-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .snip-btn { border: 1px solid var(--line); background: #f7f9fc; color: var(--ink); border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+  .snip-btn:hover { border-color: var(--accent); color: var(--accent); background: #eef3fd; }
+  .preset-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .preset-bar select { width: auto; min-width: 136px; padding: 4px 8px; font-size: 12px; }
+  .cm-card { width: min(860px, 94vw); max-height: 86vh; margin: auto; background: #fff; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.38); color: var(--ink); }
+  .cm-list { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; padding: 4px 2px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); min-height: 120px; }
+  .cm-item { position: relative; border: 1px solid var(--line); border-radius: 8px; padding: 6px; text-align: center; background: #fff; cursor: pointer; font-size: 11px; }
+  .cm-item.checked { border-color: var(--bad); background: #fff6f6; }
+  .cm-item svg { width: 52px; height: 44px; display: block; margin: 2px auto; }
+  .cm-item input { position: absolute; left: 6px; top: 6px; width: auto; }
 </style>
 </head>
 <body>
@@ -158,10 +170,10 @@
         <div id="tpl-out" class="files"></div>
         <div id="tpl-thumbs" class="thumbs"></div>
       </div>
-      <div class="card">
+      <div class="card" id="hv-drop-card">
         <h2>2. 导入写好的字帖 → 建库</h2>
-        <p class="desc">上传平板导出的矢量 PDF，自动切格提取并校准笔重，保存到 <code>packs/local/</code>（不会被提交到 Git）。</p>
-        <label>已填写字帖 PDF</label>
+        <p class="desc">上传或直接拖入平板导出的矢量 PDF，自动切格提取并校准笔重，保存到 <code>packs/local/</code>（合并时若写出了好变体会自动替掉该字原异常变体）。</p>
+        <label>已填写字帖 PDF（支持拖拽到本卡片）</label>
         <input id="hv-file" type="file" accept="application/pdf" />
         <div class="row">
           <div><label>合并到已有字库（可选）</label><select id="hv-merge"><option value="">（新建字库）</option></select></div>
@@ -200,13 +212,16 @@
         <select id="vi-pack" class="pack-select"></select>
         <button class="btn" id="btn-vi-clone" title="复制一份到 packs/local/ 以便安全删改">克隆到本地编辑</button>
         <button class="btn" id="btn-vi-supp" title="把当前字库里只有 1 个变体的字母和符号填入上方「靶向微字帖」">给单变体符号出补字帖</button>
+        <button class="btn" id="btn-vi-cleanup" title="查看并一键删除疑似异常变体，同时自动出补写字帖 PDF" style="border-color:var(--bad);color:var(--bad)">一键清理异常并补齐</button>
+        <button class="btn" id="btn-vi-undo-clean" hidden title="恢复到上次批量清理前的字库快照">↶ 撤销上次清理</button>
       </div>
-      <p class="desc">逐字预览每个手写变体的真实矢量轮廓，自动标出过粗、过细、比例偏离或残缺的疑似坏字；本地字库（<code>packs/local/</code>）可直接点右上角 × 删除坏变体。</p>
+      <p class="desc">逐字预览每个手写变体的真实矢量轮廓，自动标出过粗、过细、比例偏离或残缺的疑似坏字；支持一键批量清理异常并生成靶向补写字帖。</p>
       <div id="vi-summary" class="vi-pills"></div>
-      <div id="vi-missing" class="out" hidden style="margin-top:0;margin-bottom:10px"></div>
+      <div id="vi-missing" class="out" hidden style="margin-top:0;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"></div>
       <div class="vi-bar">
         <div class="vi-tabs" id="vi-tabs">
           <button data-vf="all" class="active">全部</button>
+          <button data-vf="recent" id="vi-tab-recent" hidden>本次新增 (0)</button>
           <button data-vf="flagged">疑似异常</button>
           <button data-vf="single">仅 1 变体</button>
           <button data-vf="alnum">数字与字母</button>
@@ -233,7 +248,15 @@
             <button class="btn" id="btn-md-sample" style="padding:4px 10px;font-size:12px" title="恢复自带示例题目">恢复示例</button>
           </div>
         </div>
-        <p class="desc" style="margin-top:0">支持 <code>$...$</code> 公式、Markdown 表格、<code>```handplot</code> 草图块（number_line / func / fbd）。按 <code>## 1.</code> / <code>## Problem 1</code> 分题；框内按 <code>Ctrl+Enter</code> 直接生成。</p>
+        <p class="desc" style="margin-top:0">支持 <code>$...$</code> 公式、Markdown 表格、<code>```handplot</code> 草图块，或直接将 <code>.md</code> 文件拖进下方编辑框；框内按 <code>Ctrl+Enter</code> 直接生成。</p>
+        <div class="snip-bar">
+          <span style="font-size:12px;color:var(--muted)">快捷插入：</span>
+          <button class="snip-btn" data-snip="q">+ 题目块</button>
+          <button class="snip-btn" data-snip="tbl">+ 表格</button>
+          <button class="snip-btn" data-snip="func">+ 函数图</button>
+          <button class="snip-btn" data-snip="num">+ 数轴</button>
+          <button class="snip-btn" data-snip="fbd">+ 受力图</button>
+        </div>
         <textarea id="md"></textarea>
         <div class="actions">
           <button class="btn" id="btn-preflight">预检缺字与公式</button>
@@ -244,7 +267,14 @@
       </div>
       <div class="grid" style="align-content:start">
         <div class="card">
-          <h2>纸张与笔</h2>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+            <h2 style="margin:0">纸张与笔</h2>
+            <div class="preset-bar">
+              <select id="preset-select" title="选择你保存的自定义参数预设"><option value="">（我的预设）</option></select>
+              <button class="btn" id="btn-preset-save" style="padding:4px 9px;font-size:12px" title="将当前纸张、字库、墨水、笔触、笔粗、状态、字号存为预设">+ 存为预设</button>
+              <button class="btn" id="btn-preset-del" style="padding:4px 8px;font-size:12px" title="删除当前选中的自定义预设" disabled>删</button>
+            </div>
+          </div>
           <div class="row">
             <div><label>字库</label><select id="opt-pack" class="pack-select"></select></div>
             <div><label>纸张</label>
@@ -257,7 +287,8 @@
           </div>
           <div class="row">
             <div><label>墨水</label><select id="opt-ink"><option value="black">黑</option><option value="blue">蓝</option><option value="darkblue">深蓝</option><option value="pencil">铅灰</option></select></div>
-            <div><label>笔触材质</label><select id="opt-pen"><option value="gel">中性笔 gel（纯矢量）</option><option value="ballpoint">圆珠笔</option><option value="fountain">钢笔</option><option value="pencil">铅笔</option></select></div>
+            <div><label>笔触材质</label><select id="opt-pen"><option value="gel">中性笔 gel</option><option value="ballpoint">圆珠笔</option><option value="fountain">钢笔</option><option value="pencil">铅笔</option></select></div>
+            <div><label>笔尖粗细</label><select id="opt-nib"><option value="0.38">0.38mm 极细</option><option value="0.5" selected>0.50mm 标准</option><option value="0.7">0.70mm 加粗</option></select></div>
             <div><label>书写状态</label><select id="opt-mood"><option value="neat">工整 neat</option><option value="normal" selected>日常 normal</option><option value="rush">赶工 rush</option></select></div>
           </div>
           <div class="row">
@@ -270,9 +301,9 @@
           </label>
           <div id="ov-paper-note" class="sub-lbl" hidden style="color:var(--accent);margin-top:8px">原卷叠写模式：底纸与纸型自动沿用原卷</div>
         </div>
-        <div class="card">
+        <div class="card" id="ov-drop-card">
           <h2>原题空白卷叠写（可选）</h2>
-          <p class="desc">选择空白作业/试卷 PDF 后会自动识别题号与留白框；可拖动、缩放、增删答题框，点 Q 标签改题号。</p>
+          <p class="desc">选择或拖入空白作业/试卷 PDF，将自动识别题号与留白框；可拖动、缩放、增删答题框，点 Q 标签改题号。</p>
           <input id="ov-file" type="file" accept="application/pdf" />
           <div class="actions">
             <button class="btn" id="btn-detect" disabled>重新检测留白框</button>
@@ -315,12 +346,37 @@
             <button class="btn need-render" id="btn-op-undo" data-op="undo" disabled>↶ 撤销</button>
             <button class="btn need-render" id="btn-op-reset" data-op="reset" disabled>↺ 全部还原</button>
           </div>
-          <label>切换笔触材质（点击即重绘当前预览）</label>
+          <label>切换笔触材质（实时重绘，无需重新排版）</label>
           <div class="seg-group" id="pv-pen-group">
             <button class="seg need-render active" data-pen="gel" disabled>中性笔</button>
             <button class="seg need-render" data-pen="ballpoint" disabled>圆珠笔</button>
             <button class="seg need-render" data-pen="fountain" disabled>钢笔</button>
             <button class="seg need-render" data-pen="pencil" disabled>铅笔</button>
+          </div>
+          <label>笔尖粗细</label>
+          <div class="seg-group" id="pv-nib-group">
+            <button class="seg need-render" data-nib="0.38" disabled>0.38mm</button>
+            <button class="seg need-render active" data-nib="0.5" disabled>0.50mm</button>
+            <button class="seg need-render" data-nib="0.7" disabled>0.70mm</button>
+          </div>
+          <label>实时墨色</label>
+          <div class="seg-group" id="pv-ink-group">
+            <button class="seg need-render active" data-ink="black" disabled>黑</button>
+            <button class="seg need-render" data-ink="blue" disabled>蓝</button>
+            <button class="seg need-render" data-ink="darkblue" disabled>深蓝</button>
+            <button class="seg need-render" data-ink="pencil" disabled>铅灰</button>
+          </div>
+          <div class="sub-lbl">快速重排</div>
+          <div class="actions" style="margin-top:4px;align-items:center">
+            <button class="btn need-render" id="btn-rerender-seed" disabled title="保持文稿和设置不变，重骰随机种子换一套全新笔迹">🎲 换一套笔迹</button>
+            <button class="btn need-render" id="btn-pv-fs-dec" disabled style="padding:5px 10px">字号 −</button>
+            <span id="pv-fs-lbl" style="font-size:12.5px;min-width:42px;text-align:center;color:var(--muted)">12pt</span>
+            <button class="btn need-render" id="btn-pv-fs-inc" disabled style="padding:5px 10px">字号 +</button>
+          </div>
+          <div class="seg-group" id="pv-mood-group" style="margin-top:6px">
+            <button class="seg need-render" data-mood="neat" disabled>工整 neat</button>
+            <button class="seg need-render active" data-mood="normal" disabled>日常 normal</button>
+            <button class="seg need-render" data-mood="rush" disabled>赶工 rush</button>
           </div>
         </div>
         <div class="card">
@@ -354,15 +410,37 @@
   </div>
   <div id="pm-body" class="modal-body"></div>
 </div>
+<div id="clean-modal" class="modal-bg">
+  <div class="cm-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <h2 style="margin:0;font-size:16px">一键清理异常变体并生成补写字帖</h2>
+      <button class="btn" id="btn-cm-close">关闭 (Esc)</button>
+    </div>
+    <div id="cm-summary" class="vi-pills" style="margin:0"></div>
+    <div id="cm-filters" style="display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;align-items:center"></div>
+    <div id="cm-list" class="cm-list"></div>
+    <div id="cm-fallbacks" class="out" hidden style="margin:0;max-height:76px;background:#fffbf2;color:#8a5508"></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12.5px">
+      <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-gen-sheet" type="checkbox" checked style="width:auto" /> 清理后自动生成补写字帖 PDF（删空/兜底字给 3 格，仅剩 1 变体给 2 格）</label>
+      <label id="cm-rad-wrap" style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer"><input id="cm-inc-rad" type="checkbox" checked style="width:auto" /> <span id="cm-rad-lbl">顺带补全缺失偏旁</span></label>
+    </div>
+    <div class="actions" style="margin-top:4px;justify-content:flex-end">
+      <button class="btn" id="btn-cm-cancel">取消</button>
+      <button class="btn primary" id="btn-cm-apply" style="background:var(--bad);border-color:var(--bad)">确认清理并生成字帖</button>
+    </div>
+  </div>
+</div>
 
 <script>
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const S = {
   packs: [], overlayB64: null, layout: null, layoutPreviews: [], packInspect: null,
-  viFilter: 'all', viLimit: 60, previewZoom: 1.0, modalZoom: 1.0,
+  viFilter: 'all', viLimit: 60, viRecentChars: [], cleanPlan: null,
+  previewZoom: 1.0, modalZoom: 1.0,
   lastPdfUrl: null, lastPdfPreviews: [], activeFmt: 'pdf', snapVer: 0,
   exportCache: {}, editorOpened: false, syncing: false, userZoomed: false, autoFitted: false,
+  lastBatchesCount: 0,
 };
 
 const SAMPLE_MD = `---
@@ -608,7 +686,12 @@ $('#pv-modal').onclick = (e) => {
   if ($('#pm-body')._didPan) { $('#pm-body')._didPan = false; return; }
   if (e.target === $('#pv-modal') || e.target === $('#pm-body')) $('#pv-modal').classList.remove('open');
 };
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#pv-modal').classList.remove('open'); });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    $('#pv-modal').classList.remove('open');
+    $('#clean-modal').classList.remove('open');
+  }
+});
 $('#pm-zin').onclick = () => applyModalZoom(S.modalZoom * 1.2);
 $('#pm-zout').onclick = () => applyModalZoom(S.modalZoom / 1.2);
 $('#pm-zlbl').onclick = () => applyModalZoom(1.0);
@@ -678,15 +761,21 @@ $('#btn-hv').onclick = (e) => busy(e.currentTarget, async () => {
   const j = await api('/api/harvest', { pdf_b64: await fileToB64(f), id: $('#hv-id').value, merge_into: $('#hv-merge').value || null });
   const r = j.result;
   const o = $('#hv-out'); o.hidden = false;
-  let txt = `✓ ${r.id}：填写 ${r.filled_cells}/${r.total_cells} 格，新增 ${r.added_glyphs} 字 / ${r.added_variants} 变体 / ${r.added_strokes} 笔画 / ${r.added_radicals} 偏旁\n共 ${r.total_chars} 字 · ${r.total_variants} 变体\n${r.pack}`;
+  const repNote = r.replaced_anomalies ? `，自动替换旧异常 ${r.replaced_anomalies} 个` : '';
+  let txt = `✓ ${r.id}：填写 ${r.filled_cells}/${r.total_cells} 格，新增 ${r.added_glyphs} 字 / ${r.added_variants} 变体 / ${r.added_strokes} 笔画 / ${r.added_radicals} 偏旁${repNote}\n共 ${r.total_chars} 字 · ${r.total_variants} 变体\n${r.pack}`;
   if (!r.filled_cells) {
     txt += '\n⚠ 未提取到任何格子！请排查：① 平板是否导出了“矢量 PDF”（不能栅格化拼合为图片）；② 四角青色定位方块是否被裁切/遮盖；③ 是否使用了深色笔迹。';
   }
   o.textContent = txt;
+  S.viRecentChars = r.newly_added_chars || [];
   await loadState();
   $('#vi-pack').value = r.id;
+  if (S.viRecentChars.length) {
+    S.viFilter = 'recent';
+    $$('#vi-tabs button').forEach(b => b.classList.toggle('active', b.dataset.vf === 'recent'));
+  }
   await loadPackInspect();
-  toast(r.filled_cells ? ('建库完成：' + r.id) : '建库完成，但未提取到有效手写格子（请检查导出是否为矢量 PDF）', !r.filled_cells);
+  toast(r.filled_cells ? (S.viRecentChars.length ? `建库完成，已切到「本次新增」方便当场验收 (${S.viRecentChars.length} 字)` : '建库完成：' + r.id) : '建库完成，但未提取到有效手写格子（请检查导出是否为矢量 PDF）', !r.filled_cells);
 });
 
 $('#btn-fb').onclick = (e) => busy(e.currentTarget, async () => {
@@ -738,7 +827,7 @@ async function loadPackInspect(keepLimit = false) {
 }
 
 const VI_TAB_LABELS = {
-  all: '全部', flagged: '疑似异常', single: '仅 1 变体',
+  all: '全部', recent: '本次新增', flagged: '疑似异常', single: '仅 1 变体',
   alnum: '数字与字母', math: '数学符号', struct: '结构符号', cjk: '汉字',
 };
 
@@ -757,8 +846,22 @@ function renderPackInspect() {
   suppBtn.disabled = lowList.length === 0;
   suppBtn.textContent = lowList.length > 0 ? `给单变体符号出补字帖 (${lowList.length})` : '字母符号均有多变体';
 
-  const counts = { all: data.items.length, flagged: 0, single: 0, alnum: 0, math: 0, struct: 0, cjk: 0 };
+  const cleanBtn = $('#btn-vi-cleanup');
+  cleanBtn.disabled = (pk.flagged_variants || 0) === 0;
+  cleanBtn.textContent = pk.flagged_variants ? `一键清理异常并补齐 (${pk.flagged_variants})` : '无异常变体';
+  $('#btn-vi-undo-clean').hidden = !pk.has_backup;
+
+  const recentSet = new Set(S.viRecentChars || []);
+  const recentTab = $('#vi-tab-recent');
+  recentTab.hidden = recentSet.size === 0;
+  if (recentSet.size === 0 && S.viFilter === 'recent') {
+    S.viFilter = 'all';
+    $$('#vi-tabs button').forEach(b => b.classList.toggle('active', b.dataset.vf === 'all'));
+  }
+
+  const counts = { all: data.items.length, recent: 0, flagged: 0, single: 0, alnum: 0, math: 0, struct: 0, cjk: 0 };
   data.items.forEach(it => {
+    if (recentSet.has(it.char)) counts.recent++;
     if (it.flagged) counts.flagged++;
     if (it.variants.length === 1) counts.single++;
     if (counts[it.group] !== undefined) counts[it.group]++;
@@ -783,13 +886,22 @@ function renderPackInspect() {
   const miss = $('#vi-missing');
   if (pk.missing_radicals && pk.missing_radicals.length) {
     miss.hidden = false;
-    miss.textContent = `缺少 ${pk.missing_radicals.length} 个常用偏旁（可填 Tier 1 第 3 页补齐，明显提升生字合成效果）：${pk.missing_radicals.join(' ')}`;
+    miss.innerHTML = `<span>缺少 ${pk.missing_radicals.length} 个常用偏旁（明显影响生字合成）：<b>${escHtml(pk.missing_radicals.join(' '))}</b></span><button class="btn" id="btn-vi-rads" style="padding:4px 10px;font-size:12px">→ 一键生成缺失偏旁补字帖</button>`;
+    $('#btn-vi-rads').onclick = (e) => busy(e.currentTarget, async () => {
+      const j = await api('/api/template', { tier: 'targeted', radicals: pk.missing_radicals });
+      $('#tpl-out').innerHTML = `<a href="${j.pdf_url}" download="InkTwin-MissingRadicals.pdf">⬇ 下载缺失偏旁补字帖（${j.result.pages} 页 / ${j.result.cells} 格）</a>`;
+      $('#tpl-thumbs').innerHTML = j.previews.map((s, idx) => `<img src="${s}" title="点击放大第 ${idx + 1} 页">`).join('');
+      const a = document.createElement('a'); a.href = j.pdf_url; a.download = 'InkTwin-MissingRadicals.pdf'; a.click();
+      openImageModal(`缺失偏旁专项补字帖（${pk.missing_radicals.length} 个偏旁）`, j.previews, { downloadUrl: j.pdf_url, downloadName: 'InkTwin-MissingRadicals.pdf' });
+    });
   } else {
     miss.hidden = true;
+    miss.innerHTML = '';
   }
 
   const q = ($('#vi-search').value || '').trim().toLowerCase();
   const filtered = data.items.filter(it => {
+    if (S.viFilter === 'recent' && !recentSet.has(it.char)) return false;
     if (S.viFilter === 'flagged' && !it.flagged) return false;
     if (S.viFilter === 'single' && it.variants.length !== 1) return false;
     if (['alnum', 'math', 'struct', 'cjk'].includes(S.viFilter) && it.group !== S.viFilter) return false;
@@ -902,20 +1014,258 @@ $('#btn-vi-supp').onclick = () => {
   toast(`已填入 ${low.length} 个单变体符号，点击「生成并下载补字帖 PDF」即可下载`);
 };
 
+$('#btn-cm-close').onclick = $('#btn-cm-cancel').onclick = () => $('#clean-modal').classList.remove('open');
+$('#clean-modal').onclick = (e) => { if (e.target === $('#clean-modal')) $('#clean-modal').classList.remove('open'); };
+
+function renderCleanModalList() {
+  const plan = S.cleanPlan;
+  if (!plan) return;
+  const activeFlags = new Set($$('#cm-filters input[data-cflag]:checked').map(x => x.dataset.cflag));
+  const list = $('#cm-list');
+  list.innerHTML = (plan.deletions || []).map((it, i) => {
+    const show = !it.flags.length || it.flags.some(f => activeFlags.has(f));
+    const checked = it._keep === false ? false : show;
+    const w = Math.max(10, it.w || 70), h = Math.max(10, it.h || 100);
+    const pad = Math.max(w, h) * 0.1;
+    const vb = `${(-pad).toFixed(1)} ${(-pad).toFixed(1)} ${(w + pad * 2).toFixed(1)} ${(h + pad * 2).toFixed(1)}`;
+    const shape = it.fill
+      ? `<path d="${escHtml(it.d)}" fill="#1d2230" fill-rule="nonzero"/>`
+      : `<path d="${escHtml(it.d)}" fill="none" stroke="#1d2230" stroke-width="${Math.max(2, it.t || 4)}" stroke-linecap="round"/>`;
+    return `<label class="cm-item ${checked ? 'checked' : ''}" data-ci="${i}"><input type="checkbox" ${checked ? 'checked' : ''} /><div><b>${escHtml(STRUCT_NAMES[it.char] || it.char)}</b> #${it.vidx + 1}</div><svg viewBox="${vb}">${shape}</svg><div style="color:var(--bad)">${escHtml(it.flags.join('·'))}</div><div style="color:var(--muted)">t=${it.t}</div></label>`;
+  }).join('') || '<div class="empty" style="grid-column:1/-1;padding:24px 0">没有可自动删除的异常变体（见下方兜底说明）。</div>';
+
+  $$('#cm-list .cm-item input').forEach(inp => {
+    inp.onchange = () => {
+      const idx = parseInt(inp.closest('.cm-item').dataset.ci, 10);
+      plan.deletions[idx]._keep = inp.checked ? true : false;
+      inp.closest('.cm-item').classList.toggle('checked', inp.checked);
+    };
+  });
+}
+
+$('#btn-vi-cleanup').onclick = (e) => busy(e.currentTarget, async () => {
+  let pid = $('#vi-pack').value || (S.packInspect && S.packInspect.pack.id);
+  if (!pid) throw new Error('请先选择字库');
+  let plan = await api('/api/pack/cleanup-plan', { pack: pid });
+  if (!plan.editable) {
+    if (!confirm('当前字库是公开只读示例，是否先自动克隆一份到本地副本再执行一键清理？')) return;
+    const newId = pid + '_custom';
+    const cl = await api('/api/pack/clone-local', { pack: pid, new_id: newId });
+    await loadState();
+    pid = cl.id;
+    $('#vi-pack').value = pid;
+    await loadPackInspect();
+    plan = await api('/api/pack/cleanup-plan', { pack: pid });
+  }
+  if (!plan.deletions.length && !plan.kept_fallbacks.length) {
+    toast('当前字库没有任何异常变体！');
+    return;
+  }
+  S.cleanPlan = plan;
+  const fc = plan.flag_counts || {};
+  $('#cm-summary').innerHTML =
+    `<span class="pill bad">待删除异常：${plan.deletions.length} 个</span>` +
+    `<span class="pill warn">暂留兜底防缺字：${plan.kept_fallbacks.length} 个</span>` +
+    `<span class="pill">补字帖计划：3格×${plan.refill_priority3.length} 字 · 2格×${plan.refill_priority2.length} 字</span>`;
+  $('#cm-filters').innerHTML = `<span style="color:var(--muted)">按异常类型勾选：</span>` +
+    ['残缺', '过粗', '过细', '比例偏离'].map(fl =>
+      `<label style="margin:0;display:inline-flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" data-cflag="${fl}" checked style="width:auto" /> ${fl} (${fc[fl] || 0})</label>`
+    ).join('');
+  $$('#cm-filters input').forEach(x => x.onchange = () => {
+    (plan.deletions || []).forEach(it => delete it._keep);
+    renderCleanModalList();
+  });
+  const fb = $('#cm-fallbacks');
+  if (plan.kept_fallbacks.length) {
+    fb.hidden = false;
+    fb.textContent = `⚠ 以下 ${plan.kept_fallbacks.length} 个字符的所有变体均异常且非残缺，已自动各保留 1 个最接近标准笔重的兜底（不删空字库），并自动列入补写字帖(3格)：${plan.kept_fallbacks.map(x => STRUCT_NAMES[x.char] || x.char).join(' ')}`;
+  } else {
+    fb.hidden = true;
+  }
+  const missRad = plan.missing_radicals || [];
+  $('#cm-rad-wrap').style.display = missRad.length ? 'flex' : 'none';
+  $('#cm-rad-lbl').textContent = `顺带补全缺失偏旁（${missRad.length} 个）`;
+  $('#cm-inc-rad').checked = missRad.length > 0;
+  renderCleanModalList();
+  $('#clean-modal').classList.add('open');
+});
+
+$('#btn-cm-apply').onclick = (e) => busy(e.currentTarget, async () => {
+  const plan = S.cleanPlan;
+  if (!plan) return;
+  const selected = [];
+  $$('#cm-list .cm-item').forEach(el => {
+    const cb = el.querySelector('input');
+    if (cb && cb.checked) {
+      const it = plan.deletions[parseInt(el.dataset.ci, 10)];
+      selected.push({ char: it.char, vidx: it.vidx });
+    }
+  });
+  const genSheet = $('#cm-gen-sheet').checked;
+  const res = await api('/api/pack/cleanup-apply', {
+    pack: plan.pack,
+    items: selected,
+    generate_sheet: genSheet,
+    include_missing_radicals: $('#cm-inc-rad').checked,
+    force_sheet: genSheet && (plan.kept_fallbacks.length > 0),
+  });
+  $('#clean-modal').classList.remove('open');
+  await loadState();
+  $('#vi-pack').value = res.pack;
+  await loadPackInspect();
+  if (res.sheet) {
+    const sh = res.sheet;
+    $('#tpl-out').innerHTML = `<a href="${sh.pdf_url}" download="InkTwin-Refill.pdf">⬇ 下载补写字帖 PDF（${sh.result.pages} 页 / ${sh.result.cells} 格）</a>`;
+    $('#tpl-thumbs').innerHTML = sh.previews.map((s, idx) => `<img src="${s}" title="点击放大第 ${idx + 1} 页">`).join('');
+    const a = document.createElement('a'); a.href = sh.pdf_url; a.download = 'InkTwin-Refill.pdf'; a.click();
+    openImageModal(`清理后补写字帖（3格×${sh.priority3_count} · 2格×${sh.priority2_count} · 偏旁×${sh.radicals_count}）`, sh.previews, { downloadUrl: sh.pdf_url, downloadName: 'InkTwin-Refill.pdf' });
+  }
+  toast(`已清理 ${res.deleted_count} 个异常变体（已自动备份，可点「撤销上次清理」恢复）`);
+});
+
+$('#btn-vi-undo-clean').onclick = (e) => busy(e.currentTarget, async () => {
+  const pid = $('#vi-pack').value || (S.packInspect && S.packInspect.pack.id);
+  if (!pid || !confirm(`确定将「${pid}」恢复到上次批量清理前的快照备份？`)) return;
+  await api('/api/pack/restore-backup', { pack: pid });
+  await loadState();
+  $('#vi-pack').value = pid;
+  await loadPackInspect();
+  toast('已恢复到批量清理前的字库备份');
+});
+
 /* ---------------- Compose ---------------- */
 function renderOptions() {
   return {
     markdown: $('#md').value, pack: $('#opt-pack').value, paper: $('#opt-paper').value, page_size: $('#opt-size').value,
-    ink: $('#opt-ink').value, pen_type: $('#opt-pen').value, mood: $('#opt-mood').value,
-    font_size: parseFloat($('#opt-fs').value || '12'), seed: $('#opt-seed').value || null, tag: $('#opt-tag').value.trim(),
+    ink: $('#opt-ink').value, pen_type: $('#opt-pen').value, nib_mm: parseFloat($('#opt-nib').value || '0.5'),
+    mood: $('#opt-mood').value, font_size: parseFloat($('#opt-fs').value || '12'),
+    seed: $('#opt-seed').value || null, tag: $('#opt-tag').value.trim(),
     elastic: $('#opt-elastic').checked,
     overlay_pdf_b64: S.overlayB64, layout: S.layout,
   };
 }
 
 const DRAFT_KEY = 'inktwin_studio_draft_v1';
-const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-mood', 'opt-fs', 'opt-tag', 'opt-elastic'];
+const DRAFT_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-nib', 'opt-mood', 'opt-fs', 'opt-tag', 'opt-elastic'];
+const PRESET_KEY = 'inktwin_custom_presets_v1';
+const PRESET_FIELDS = ['opt-pack', 'opt-paper', 'opt-size', 'opt-ink', 'opt-pen', 'opt-nib', 'opt-mood', 'opt-fs', 'opt-elastic'];
 let draftTimer = null;
+
+function readPresets() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(PRESET_KEY) || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+
+function renderPresetSelect(selectedName = '') {
+  const list = readPresets();
+  const sel = $('#preset-select');
+  sel.innerHTML = '<option value="">（我的预设）</option>' + list.map(p => `<option value="${escHtml(p.name)}">${escHtml(p.name)}</option>`).join('');
+  if (selectedName && list.some(p => p.name === selectedName)) sel.value = selectedName;
+  $('#btn-preset-del').disabled = !sel.value;
+}
+
+$('#preset-select').onchange = () => {
+  const name = $('#preset-select').value;
+  $('#btn-preset-del').disabled = !name;
+  if (!name) return;
+  const found = readPresets().find(p => p.name === name);
+  if (!found || !found.values) return;
+  PRESET_FIELDS.forEach(id => {
+    const el = $('#' + id), val = found.values[id];
+    if (!el || val === undefined) return;
+    if (el.type === 'checkbox') el.checked = !!val;
+    else if (el.tagName === 'SELECT') {
+      if (Array.from(el.options).some(o => o.value === String(val))) el.value = String(val);
+    } else el.value = val;
+  });
+  saveDraft();
+  toast('已应用自定义预设：' + name);
+};
+
+$('#btn-preset-save').onclick = () => {
+  const name = prompt('输入自定义预设名称（例如：物化草稿 / 高数提交版）：', '');
+  if (!name || !name.trim()) return;
+  const clean = name.trim();
+  const vals = {};
+  PRESET_FIELDS.forEach(id => {
+    const el = $('#' + id);
+    if (el) vals[id] = (el.type === 'checkbox') ? !!el.checked : el.value;
+  });
+  const list = readPresets().filter(p => p.name !== clean);
+  list.push({ name: clean, values: vals });
+  localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+  renderPresetSelect(clean);
+  toast('已保存预设：' + clean);
+};
+
+$('#btn-preset-del').onclick = () => {
+  const name = $('#preset-select').value;
+  if (!name || !confirm(`确定删除预设「${name}」？`)) return;
+  const list = readPresets().filter(p => p.name !== name);
+  localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+  renderPresetSelect('');
+  toast('已删除预设：' + name);
+};
+
+const SNIPPETS = {
+  q: `\n## 1.\n解：设 $f(x) = $，则 \n`,
+  tbl: `\n| 变量 | 1 | 2 | 3 |\n| :--- | :--- | :--- | :--- |\n| 结果 |  |  |  |\n`,
+  func: `\n\`\`\`handplot\ntype: func\nwidth_mm: 64\nheight_mm: 40\nx_range: [-0.5, 2.5]\ny_range: [-0.5, 4.5]\nshade:\n  expr: "x**2"\n  from: 0\n  to: 2\ncurves:\n  - expr: "x**2"\n    domain: [-0.4, 2.1]\n\`\`\`\n`,
+  num: `\n\`\`\`handplot\ntype: number_line\nwidth_mm: 86\nheight_mm: 20\nrange: [-3, 4]\nlabel: "x"\nintervals:\n  - from: -1\n    to: 3\n    open_left: false\n    open_right: true\n    shade: true\n\`\`\`\n`,
+  fbd: `\n\`\`\`handplot\ntype: fbd\nwidth_mm: 52\nheight_mm: 40\nbody:\n  shape: incline\n  incline_deg: 30\n  label: "m"\nforces:\n  - angle_deg: -90\n    len: 1.0\n    label: "mg"\n  - angle_deg: 120\n    len: 0.85\n    label: "N"\n\`\`\`\n`,
+};
+
+$$('.snip-btn').forEach(btn => btn.onclick = () => {
+  const ta = $('#md');
+  const txt = SNIPPETS[btn.dataset.snip] || '';
+  const st = ta.selectionStart || 0, en = ta.selectionEnd || 0;
+  ta.value = ta.value.slice(0, st) + txt + ta.value.slice(en);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = st + txt.length;
+  saveDraft();
+});
+
+function attachFileDrop(el, acceptExts, onFile) {
+  if (!el) return;
+  el.addEventListener('dragover', (e) => { e.preventDefault(); el.classList.add('drop-over'); });
+  el.addEventListener('dragleave', (e) => { if (!el.contains(e.relatedTarget)) el.classList.remove('drop-over'); });
+  el.addEventListener('drop', (e) => {
+    e.preventDefault();
+    el.classList.remove('drop-over');
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    const low = f.name.toLowerCase();
+    if (!acceptExts.some(ext => low.endsWith(ext))) {
+      toast('不支持该文件格式，请拖入 ' + acceptExts.join(' / '), true);
+      return;
+    }
+    onFile(f);
+  });
+}
+
+attachFileDrop($('#md'), ['.md', '.markdown', '.txt'], async (f) => {
+  $('#md').value = await f.text();
+  saveDraft();
+  toast('已拖入导入：' + f.name);
+});
+
+attachFileDrop($('#ov-drop-card'), ['.pdf'], (f) => {
+  const dt = new DataTransfer();
+  dt.items.add(f);
+  $('#ov-file').files = dt.files;
+  $('#ov-file').onchange();
+  toast('已加载空白原卷：' + f.name);
+});
+
+attachFileDrop($('#hv-drop-card'), ['.pdf'], (f) => {
+  const dt = new DataTransfer();
+  dt.items.add(f);
+  $('#hv-file').files = dt.files;
+  $('#hv-file').onchange();
+  toast('已选择待提取字帖：' + f.name);
+});
 
 function saveDraft() {
   clearTimeout(draftTimer);
@@ -1203,12 +1553,25 @@ async function showSnapshot(j) {
   S.lastPdfPreviews = j.previews || [];
 
   const pen = j.pen_type || 'gel';
+  const nib = String(j.nib_mm ?? 0.5);
+  const ink = j.ink || 'black';
   $$('#pv-pen-group button').forEach(b => b.classList.toggle('active', b.dataset.pen === pen));
+  $$('#pv-nib-group button').forEach(b => b.classList.toggle('active', parseFloat(b.dataset.nib) === parseFloat(nib)));
+  $$('#pv-ink-group button').forEach(b => b.classList.toggle('active', b.dataset.ink === ink));
+  $('#opt-ink').value = ink;
+  $('#opt-pen').value = pen;
+  if (Array.from($('#opt-nib').options).some(o => parseFloat(o.value) === parseFloat(nib))) $('#opt-nib').value = String(parseFloat(nib));
+
+  const fsVal = parseFloat($('#opt-fs').value || '12');
+  $('#pv-fs-lbl').textContent = fsVal + 'pt';
+  const moodVal = $('#opt-mood').value || 'normal';
+  $$('#pv-mood-group button').forEach(b => b.classList.toggle('active', b.dataset.mood === moodVal));
 
   const ins = j.inspect, ac = ins.anomaly_counts || {};
   const gapCnt = ac.gap || 0;
   const alignedCnt = ac.left_edges_aligned || 0;
   const batchesCnt = (j.batches_count !== undefined ? j.batches_count : j.edits_count) || 0;
+  S.lastBatchesCount = batchesCnt;
 
   const tightenBtn = $('#btn-op-tighten');
   tightenBtn.disabled = gapCnt === 0;
@@ -1274,6 +1637,60 @@ $$('#pv-pen-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget,
   if (autoSwitched) toast(`透明 SVG 为纯矢量不含纸纹，已自动切到「透明 PNG」以展示${label}材质`);
   else toast('已切换笔触：' + label);
 }, { managed: true }));
+
+$$('#pv-nib-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
+  const nib = parseFloat(b.dataset.nib);
+  const autoSwitched = (Math.abs(nib - 0.5) > 0.02 && S.activeFmt === 'svg');
+  if (autoSwitched) S.activeFmt = 'png';
+  const j = await api('/api/scene/ops', { action: 'repen', nib_mm: nib });
+  await showSnapshot(j);
+  toast(autoSwitched ? `已切换 ${nib}mm 笔尖粗细（自动切至 PNG 预览效果）` : `已切换笔尖粗细：${nib}mm`);
+}, { managed: true }));
+
+$$('#pv-ink-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
+  const ink = b.dataset.ink;
+  const j = await api('/api/scene/ops', { action: 'repen', ink });
+  await showSnapshot(j);
+  toast('已切换墨色：' + b.textContent.trim());
+}, { managed: true }));
+
+async function quickRerender(btn, toastMsg) {
+  if (S.lastBatchesCount > 0 && !confirm(`当前已有 ${S.lastBatchesCount} 步手工微调，重排会重新生成页面（会清空本次微调），确定继续？`)) return;
+  return busy(btn, async () => {
+    if (!S.overlayB64 && $('#ov-file').files[0]) S.overlayB64 = await fileToB64($('#ov-file').files[0]);
+    const j = await api('/api/render', renderOptions());
+    await showSnapshot(j);
+    saveDraft();
+    toast(toastMsg);
+  });
+}
+
+$('#btn-rerender-seed').onclick = (e) => {
+  const ns = Math.floor(1 + Math.random() * 999999);
+  $('#opt-seed').value = String(ns);
+  quickRerender(e.currentTarget, `已换用新随机笔迹（种子 ${ns}）`);
+};
+
+$('#btn-pv-fs-dec').onclick = (e) => {
+  const cur = parseFloat($('#opt-fs').value || '12');
+  const nxt = Math.max(8, Math.round((cur - 0.5) * 10) / 10);
+  if (nxt === cur) return;
+  $('#opt-fs').value = String(nxt);
+  quickRerender(e.currentTarget, `字号已调整为 ${nxt}pt 并重排`);
+};
+
+$('#btn-pv-fs-inc').onclick = (e) => {
+  const cur = parseFloat($('#opt-fs').value || '12');
+  const nxt = Math.min(20, Math.round((cur + 0.5) * 10) / 10);
+  if (nxt === cur) return;
+  $('#opt-fs').value = String(nxt);
+  quickRerender(e.currentTarget, `字号已调整为 ${nxt}pt 并重排`);
+};
+
+$$('#pv-mood-group button').forEach(b => b.onclick = (e) => {
+  $('#opt-mood').value = b.dataset.mood;
+  quickRerender(e.currentTarget, '已切换书写状态为：' + b.textContent.trim());
+});
 
 $$('#pv-fmt-group button').forEach(b => b.onclick = (e) => busy(e.currentTarget, async () => {
   await switchPreviewFormat(b.dataset.fmt);
@@ -1344,6 +1761,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 $('#md').value = SAMPLE_MD;
+renderPresetSelect();
 syncOverlayUI();
 loadState().then(async (st) => {
   restoreDraft();

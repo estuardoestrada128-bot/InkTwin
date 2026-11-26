@@ -153,10 +153,21 @@ def build_template_cells(
     chars: Optional[str] = None,
     from_md: Optional[Path] = None,
     pack: Optional[HwPack] = None,
+    char_copies: Optional[Dict[str, int]] = None,
+    radicals: Optional[List[str]] = None,
 ) -> Tuple[List[CellSpec], Dict[int, str]]:
     """Build ordered CellSpecs and page titles for tier1 / tier2 / targeted templates."""
     tier_l = (tier or "tier1").lower()
-    if from_md is not None or chars is not None or tier_l == "targeted":
+    rad_list: List[str] = []
+    if radicals:
+        rad_seen = set()
+        for r in radicals:
+            rs = (r or "").strip()
+            if rs and rs not in rad_seen:
+                rad_seen.add(rs)
+                rad_list.append(rs)
+
+    if from_md is not None or chars is not None or rad_list or tier_l == "targeted":
         char_list: List[str] = []
         seen = set()
 
@@ -176,18 +187,23 @@ def build_template_cells(
             for tk in pf.get("missing_glyphs", []):
                 _push(tk)
         fallback_default = False
-        if not char_list:
+        if not char_list and not rad_list:
             fallback_default = True
             for ch in "0123456789xyz=+-":
                 _push(ch)
 
-        # Lay out across as many A4 pages as needed (2 copies per char if <= 72 chars so variants populate cleanly)
-        copies = 2 if len(char_list) <= 72 else 1
+        # Lay out across as many A4 pages as needed (respect per-char copy overrides or default 2 if <= 72 chars)
+        default_copies = 2 if len(char_list) <= 72 else 1
         items: List[Tuple[str, str, str, str]] = []
         for ch in char_list:
             nm = "width100" if ch.startswith("__FRAC") else "height100"
-            for _ in range(copies):
+            n_rep = max(1, min(4, int((char_copies or {}).get(ch, default_copies))))
+            for _ in range(n_rep):
                 items.append(("glyph", ch, ch, nm))
+        rad_copies = 2 if len(rad_list) <= 30 else 1
+        for rad in rad_list:
+            for _ in range(rad_copies):
+                items.append(("radical", rad, f"部{rad}", "height100"))
 
         per_page = 12 * 14
         all_cells: List[CellSpec] = []
@@ -348,9 +364,13 @@ def generate_template_pdf(
     chars: Optional[str] = None,
     from_md: Optional[Path] = None,
     pack: Optional[HwPack] = None,
+    char_copies: Optional[Dict[str, int]] = None,
+    radicals: Optional[List[str]] = None,
 ) -> dict:
     """Render an A4 vector handwriting collection sheet PDF with embedded fiducial & cell spec."""
-    cells, titles = build_template_cells(tier=tier, chars=chars, from_md=from_md, pack=pack)
+    cells, titles = build_template_cells(
+        tier=tier, chars=chars, from_md=from_md, pack=pack, char_copies=char_copies, radicals=radicals
+    )
     num_pages = max((c.page for c in cells), default=0) + 1
 
     doc = fitz.open()
